@@ -21,26 +21,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Obtener sesión inicial
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) fetchRole(session.user.id);
-      else setLoading(false);
-    });
+    // Safety timeout: never stay loading more than 5 seconds
+    const timeout = setTimeout(() => setLoading(false), 5000);
 
-    // Escuchar cambios de auth
+    // Escuchar cambios de auth (fires immediately with current session)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) await fetchRole(session.user.id);
-      else {
+      if (session?.user) {
+        await fetchRole(session.user.id);
+      } else {
         setRole(null);
         setLoading(false);
       }
+      clearTimeout(timeout);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const fetchRole = async (userId: string) => {

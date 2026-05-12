@@ -3,15 +3,16 @@ import { supabase, AnalysisItem, DTContext } from '../lib/supabase';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
-import { Brain, Target, AlertTriangle, Plus, Trash2, Trophy, CheckCircle2 } from 'lucide-react';
+import { Brain, Target, AlertTriangle, Plus, Trash2, Trophy, CheckCircle2, Loader } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-type Item = AnalysisItem & { status?: 'active' | 'conquered'; conquered_at?: string };
+type Item = AnalysisItem & { status?: 'active' | 'conquered'; conquered_at?: string; conquest_note?: string };
 
 const Analisis = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [conqueringId, setConqueringId] = useState<string | null>(null);
   const { role } = useAuth();
   const isAdmin = role === 'admin' || role === 'dt';
 
@@ -39,12 +40,26 @@ const Analisis = () => {
   };
 
   const conquer = async (id: string) => {
-    const { error } = await supabase.from('analysis_items').update({
-      status: 'conquered',
-      conquered_at: new Date().toISOString(),
-    }).eq('id', id);
-    if (error) toast.error('Error');
-    else { toast.success('¡Mejora conquistada! 🏆'); fetchData(); }
+    const item = items.find(i => i.id === id);
+    if (!item) return;
+    setConqueringId(id);
+    try {
+      const { data: aiData } = await supabase.functions.invoke('interpret-conquest', {
+        body: { item_text: item.text, item_detail: item.detail }
+      });
+      const conquest_note = aiData?.note ?? null;
+      const { error } = await supabase.from('analysis_items').update({
+        status: 'conquered',
+        conquered_at: new Date().toISOString(),
+        conquest_note,
+      }).eq('id', id);
+      if (error) toast.error('Error');
+      else { toast.success('¡Mejora conquistada! 🏆'); fetchData(); }
+    } catch {
+      toast.error('Error al generar interpretación');
+    } finally {
+      setConqueringId(null);
+    }
   };
 
   const reopen = async (id: string) => {
@@ -116,8 +131,11 @@ const Analisis = () => {
                       <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => conquer(item.id!)}
                           title="Marcar como conquistado"
-                          className="text-yellow-500 hover:text-yellow-400 transition-colors">
-                          <CheckCircle2 size={16} />
+                          disabled={conqueringId === item.id}
+                          className="text-yellow-500 hover:text-yellow-400 transition-colors disabled:opacity-50">
+                          {conqueringId === item.id
+                            ? <Loader size={16} className="animate-spin" />
+                            : <CheckCircle2 size={16} />}
                         </button>
                         <button onClick={() => deleteItem(item.id!)} className="text-red-500 transition-colors">
                           <Trash2 size={14} />
@@ -146,8 +164,13 @@ const Analisis = () => {
                     <div className="flex-1 min-w-0">
                       <p className="font-black text-sm text-yellow-400">{item.text}</p>
                       <p className="text-xs text-gray-500 mt-0.5">{item.detail}</p>
+                      {item.conquest_note && (
+                        <p className="text-xs text-yellow-300/80 mt-2 leading-relaxed italic border-l-2 border-yellow-700/50 pl-2">
+                          "{item.conquest_note}"
+                        </p>
+                      )}
                       {item.conquered_at && (
-                        <p className="text-[10px] text-gray-600 mt-1">
+                        <p className="text-[10px] text-gray-600 mt-1.5">
                           Conquistado el {new Date(item.conquered_at).toLocaleDateString('es-AR')}
                         </p>
                       )}
