@@ -26,18 +26,38 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     // Safety timeout: never stay loading more than 6 seconds
     const timeout = setTimeout(() => setLoading(false), 6000);
 
-    // 1) Get current session immediately
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setSession(session);
-        setUser(session.user);
-        fetchRole(session.user.id).then(() => clearTimeout(timeout));
-      } else {
+    // 1) Get current session — if token is expired, refreshSession handles it
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (error || !session?.user) {
         setSession(null);
         setUser(null);
         setLoading(false);
         clearTimeout(timeout);
+        return;
       }
+      // Check if access token is still valid (not expired)
+      const expiresAt = session.expires_at ?? 0;
+      const nowSec = Math.floor(Date.now() / 1000);
+      if (expiresAt > 0 && expiresAt < nowSec) {
+        // Token expired — try to refresh
+        const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
+        if (refreshErr || !refreshed.session) {
+          await supabase.auth.signOut({ scope: 'local' });
+          setSession(null);
+          setUser(null);
+          setLoading(false);
+          clearTimeout(timeout);
+          window.location.href = '/login';
+          return;
+        }
+        setSession(refreshed.session);
+        setUser(refreshed.session.user);
+        fetchRole(refreshed.session.user.id).then(() => clearTimeout(timeout));
+        return;
+      }
+      setSession(session);
+      setUser(session.user);
+      fetchRole(session.user.id).then(() => clearTimeout(timeout));
     });
 
     // 2) Listen for auth state changes
