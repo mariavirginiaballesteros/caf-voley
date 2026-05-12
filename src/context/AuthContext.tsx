@@ -23,10 +23,24 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [recovering, setRecovering] = useState(false);
 
   useEffect(() => {
-    // Safety timeout: never stay loading more than 5 seconds
-    const timeout = setTimeout(() => setLoading(false), 5000);
+    // Safety timeout: never stay loading more than 6 seconds
+    const timeout = setTimeout(() => setLoading(false), 6000);
 
-    // Escuchar cambios de auth (fires immediately with current session)
+    // 1) Get current session immediately
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setSession(session);
+        setUser(session.user);
+        fetchRole(session.user.id).then(() => clearTimeout(timeout));
+      } else {
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        clearTimeout(timeout);
+      }
+    });
+
+    // 2) Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setSession(session);
@@ -39,15 +53,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (event === 'USER_UPDATED') {
         setRecovering(false);
       }
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        await fetchRole(session.user.id);
-      } else {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) await fetchRole(session.user.id);
+        clearTimeout(timeout);
+      }
+      if (event === 'SIGNED_OUT') {
+        setSession(null);
+        setUser(null);
         setRole(null);
         setLoading(false);
+        clearTimeout(timeout);
       }
-      clearTimeout(timeout);
     });
 
     return () => {
@@ -57,14 +75,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const fetchRole = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', userId)
-      .single();
-    
-    if (!error && data) setRole(data.role as Role);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+      if (!error && data?.role) {
+        setRole(data.role as Role);
+      } else {
+        // Profile exists but no role — default to player
+        setRole('player');
+      }
+    } catch {
+      setRole('player');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const signOut = async () => {
