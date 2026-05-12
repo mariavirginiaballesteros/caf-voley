@@ -36,12 +36,12 @@ const Index = () => {
       const [mRes, vRes, pRes] = await Promise.all([
         supabase.from('matches26').select('*').order('date', { ascending: false }),
         supabase.from('videos').select('*').order('date', { ascending: false }),
-        supabase.from('players').select('*').order('num', { ascending: true })
+        supabase.from('players').select('*')
       ]);
 
-      if (mRes.data) setMatches(mRes.data);
-      if (vRes.data) setVideos(vRes.data);
-      if (pRes.data) setPlayers(pRes.data);
+      setMatches(mRes.data ?? []);
+      setVideos(vRes.data ?? []);
+      setPlayers(pRes.data ?? []);
     } catch (error) {
       toast.error('Error al cargar datos');
     } finally {

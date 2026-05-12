@@ -80,9 +80,10 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     }
   ];
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
+  const handleSignOut = () => {
+    supabase.auth.signOut({ scope: 'local' }).finally(() => {
+      window.location.href = '/login';
+    });
   };
 
   return (
@@ -104,7 +105,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         
         <nav className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
           {menuGroups.map((group, idx) => {
-            const visibleItems = group.items.filter(item => !item.roles || (role && item.roles.includes(role)));
+            // Show item if role matches, or if authenticated but role not yet loaded (show player-level items as fallback)
+            const visibleItems = group.items.filter(item => !item.roles || item.roles.includes(role as string) || item.roles.includes('player'));
             if (visibleItems.length === 0) return null;
             
             return (
