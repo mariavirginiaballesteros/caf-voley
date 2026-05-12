@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { supabase } from '../integrations/supabase/client';
@@ -6,19 +6,10 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const Login = () => {
-  const { session, loading } = useAuth();
-  const [isRecovery, setIsRecovery] = useState(false);
-
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') setIsRecovery(true);
-      if (event === 'USER_UPDATED') setIsRecovery(false);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
+  const { session, loading, recovering } = useAuth();
 
   if (loading) return null;
-  if (session && !isRecovery) return <Navigate to="/" />;
+  if (session && !recovering) return <Navigate to="/" />;
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">

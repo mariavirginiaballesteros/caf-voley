@@ -9,6 +9,7 @@ interface AuthContextType {
   user: User | null;
   role: Role;
   loading: boolean;
+  recovering: boolean;
   signOut: () => Promise<void>;
 }
 
@@ -19,13 +20,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<Role>(null);
   const [loading, setLoading] = useState(true);
+  const [recovering, setRecovering] = useState(false);
 
   useEffect(() => {
     // Safety timeout: never stay loading more than 5 seconds
     const timeout = setTimeout(() => setLoading(false), 5000);
 
     // Escuchar cambios de auth (fires immediately with current session)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setRecovering(true);
+        setLoading(false);
+        clearTimeout(timeout);
+        return;
+      }
+      if (event === 'USER_UPDATED') {
+        setRecovering(false);
+      }
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
@@ -59,7 +72,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, role, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user, role, loading, recovering, signOut }}>
       {children}
     </AuthContext.Provider>
   );
