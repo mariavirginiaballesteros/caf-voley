@@ -14,6 +14,7 @@ import AICoach from './pages/AICoach';
 import Scout from './pages/Scout';
 import MiPerfil from './pages/MiPerfil';
 import Login from './pages/Login';
+import History2025 from './pages/History2025';
 import LoadingSpinner from './components/LoadingSpinner';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode, roles?: string[] }) => {
@@ -94,6 +95,12 @@ function AppRoutes() {
       <Route path="/usuarios" element={
         <ProtectedRoute roles={['admin']}>
           <Usuarios />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/history-2025" element={
+        <ProtectedRoute>
+          <History2025 />
         </ProtectedRoute>
       } />
 
