@@ -4,7 +4,7 @@ import { getCache, setCache } from '../lib/cache';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
-import { Play, Tag, Plus, Trash2, Sparkles, ChevronDown, ChevronUp, Loader } from 'lucide-react';
+import { Play, Tag, Plus, Trash2, Sparkles, Loader } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type VideoWithAnalysis = Video & { ai_analysis?: string | null };
@@ -14,7 +14,6 @@ const Videos = () => {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const { role } = useAuth();
   const isAdmin = role === 'admin' || role === 'dt';
 
@@ -59,7 +58,6 @@ const Videos = () => {
       });
       if (error) throw error;
       toast.success('Análisis generado');
-      setExpandedId(video.id!);
       fetchVideos();
     } catch {
       toast.error('Error al analizar');
@@ -126,34 +124,45 @@ const Videos = () => {
                   ))}
                 </div>
 
-                {/* Análisis IA */}
+                {/* Análisis IA — siempre visible si existe */}
                 {video.ai_analysis ? (
-                  <div>
-                    <button
-                      onClick={() => setExpandedId(expandedId === video.id ? null : video.id!)}
-                      className="w-full flex items-center justify-between text-xs font-black text-purple-400 bg-purple-900/10 border border-purple-900/30 rounded-xl px-3 py-2 hover:bg-purple-900/20 transition-all"
-                    >
-                      <span className="flex items-center gap-1.5"><Sparkles size={12} /> Análisis IA</span>
-                      {expandedId === video.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
-                    {expandedId === video.id && (
-                      <div className="mt-2 bg-[#141414] border border-purple-900/20 rounded-xl p-4 text-xs text-gray-300 leading-relaxed whitespace-pre-line">
-                        {video.ai_analysis}
-                      </div>
-                    )}
+                  <div className="mt-1 bg-[#0f0f0f] border border-purple-900/30 rounded-xl overflow-hidden">
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-purple-900/20">
+                      <span className="flex items-center gap-1.5 text-[10px] font-black text-purple-400 uppercase tracking-widest">
+                        <Sparkles size={10} /> Análisis Flora IA
+                      </span>
+                      {isAdmin && (
+                        <button
+                          onClick={() => analyzeVideo(video)}
+                          disabled={analyzingId === video.id}
+                          title="Re-analizar"
+                          className="text-[10px] text-gray-600 hover:text-purple-400 transition-colors disabled:opacity-40 flex items-center gap-1"
+                        >
+                          {analyzingId === video.id
+                            ? <Loader size={10} className="animate-spin" />
+                            : <Sparkles size={10} />}
+                          {analyzingId === video.id ? 'Analizando...' : 'Re-analizar'}
+                        </button>
+                      )}
+                    </div>
+                    <div className="px-4 py-3 text-xs text-gray-300 leading-relaxed whitespace-pre-line min-h-[6rem]">
+                      {video.ai_analysis}
+                    </div>
                   </div>
                 ) : isAdmin ? (
                   <button
                     onClick={() => analyzeVideo(video)}
                     disabled={analyzingId === video.id}
-                    className="w-full flex items-center justify-center gap-2 text-xs font-black text-purple-400 bg-purple-900/10 border border-dashed border-purple-900/30 rounded-xl px-3 py-2 hover:bg-purple-900/20 transition-all disabled:opacity-50"
+                    className="w-full flex items-center justify-center gap-2 text-xs font-black text-purple-400 bg-purple-900/10 border border-dashed border-purple-900/30 rounded-xl px-3 py-3 hover:bg-purple-900/20 transition-all disabled:opacity-50"
                   >
                     {analyzingId === video.id
-                      ? <><Loader size={12} className="animate-spin" /> Analizando...</>
-                      : <><Sparkles size={12} /> Analizar con IA</>}
+                      ? <><Loader size={12} className="animate-spin" /> Analizando con IA...</>
+                      : <><Sparkles size={12} /> Analizar este video con IA</>}
                   </button>
                 ) : (
-                  <p className="text-xs text-gray-600 text-center py-1">Análisis pendiente</p>
+                  <div className="flex items-center justify-center gap-2 text-xs text-gray-600 bg-[#141414] rounded-xl px-3 py-3 border border-[#222]">
+                    <Sparkles size={12} /> Análisis pendiente
+                  </div>
                 )}
               </div>
             </div>
