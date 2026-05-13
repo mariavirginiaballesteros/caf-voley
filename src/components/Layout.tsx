@@ -81,9 +81,11 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
   ];
 
   const handleSignOut = () => {
-    supabase.auth.signOut({ scope: 'local' }).finally(() => {
-      window.location.href = '/login';
-    });
+    // Clear Supabase session from localStorage immediately — no network wait
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('sb-'))
+      .forEach(k => localStorage.removeItem(k));
+    window.location.href = '/login';
   };
 
   return (
