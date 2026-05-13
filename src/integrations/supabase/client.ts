@@ -9,7 +9,7 @@ const fetchWithTimeout = (url: RequestInfo | URL, options: RequestInit = {}): Pr
   const urlStr = typeof url === 'string' ? url : url instanceof URL ? url.href : (url as Request).url;
   const isEdgeFn = urlStr.includes('/functions/v1/');
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), isEdgeFn ? 30000 : 10000);
+  const timer = setTimeout(() => controller.abort(), isEdgeFn ? 60000 : 10000);
   return fetch(url, { ...options, signal: controller.signal })
     .finally(() => clearTimeout(timer))
     .catch(err => new Response(
