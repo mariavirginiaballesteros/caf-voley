@@ -114,7 +114,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (!error && data?.role) {
         const r = data.role as Role;
         setRole(r);
-        localStorage.setItem(cacheKey, r);
+        if (r) localStorage.setItem(cacheKey, r);
       } else if (!cached && attempt < 2) {
         // Query failed and no cache — retry after 3s
         setTimeout(() => fetchRole(userId, attempt + 1), 3000);
