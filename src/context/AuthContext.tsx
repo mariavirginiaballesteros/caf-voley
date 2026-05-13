@@ -15,6 +15,15 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Extract role from JWT metadata (instant, no DB query)
+const roleFromMeta = (session: Session | null): Role => {
+  const r = session?.user?.user_metadata?.role;
+  if (r === 'admin' || r === 'dt' || r === 'player') return r;
+  return null;
+};
+
+const ROLE_CACHE = (uid: string) => `caf_role_${uid}`;
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -22,14 +31,29 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [recovering, setRecovering] = useState(false);
 
+  const applySession = (s: Session | null) => {
+    setSession(s);
+    setUser(s?.user ?? null);
+
+    if (!s?.user) { setRole(null); return; }
+
+    // 1. JWT metadata — instant, zero network
+    const metaRole = roleFromMeta(s);
+    if (metaRole) { setRole(metaRole); return; }
+
+    // 2. localStorage cache — also instant
+    const cached = localStorage.getItem(ROLE_CACHE(s.user.id)) as Role | null;
+    if (cached) setRole(cached);
+
+    // 3. DB query in background (updates cache for next time)
+    fetchRoleFromDB(s.user.id);
+  };
+
   useEffect(() => {
-    // Safety: never stay loading more than 2 seconds
     const timeout = setTimeout(() => setLoading(false), 2000);
 
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error || !session?.user) {
-        setSession(null);
-        setUser(null);
         setLoading(false);
         clearTimeout(timeout);
         return;
@@ -42,30 +66,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
         if (refreshErr || !refreshed.session) {
           Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
-          setSession(null);
-          setUser(null);
           setLoading(false);
           clearTimeout(timeout);
           return;
         }
-        setSession(refreshed.session);
-        setUser(refreshed.session.user);
-        // Unlock UI immediately — role loads in background
+        applySession(refreshed.session);
         setLoading(false);
         clearTimeout(timeout);
-        fetchRole(refreshed.session.user.id);
         return;
       }
 
-      // Session valid — unlock UI immediately, don't wait for role
-      setSession(session);
-      setUser(session.user);
+      applySession(session);
       setLoading(false);
       clearTimeout(timeout);
-      fetchRole(session.user.id);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setSession(session);
         setUser(session?.user ?? null);
@@ -77,14 +93,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setRecovering(false);
       }
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        setSession(session);
-        setUser(session?.user ?? null);
+        applySession(session);
         setLoading(false);
-        if (session?.user) fetchRole(session.user.id);
       }
       if (event === 'SIGNED_OUT') {
-        // Clear cached role
-        Object.keys(localStorage).filter(k => k.startsWith('caf_role_')).forEach(k => localStorage.removeItem(k));
+        Object.keys(localStorage)
+          .filter(k => k.startsWith('caf_role_'))
+          .forEach(k => localStorage.removeItem(k));
         setSession(null);
         setUser(null);
         setRole(null);
@@ -92,47 +107,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     });
 
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(timeout);
-    };
+    return () => { subscription.unsubscribe(); clearTimeout(timeout); };
   }, []);
 
-  const fetchRole = async (userId: string, attempt = 0) => {
-    // Show cached role instantly while DB loads
-    const cacheKey = `caf_role_${userId}`;
-    const cached = localStorage.getItem(cacheKey) as Role | null;
-    if (cached) setRole(cached);
-
+  const fetchRoleFromDB = async (userId: string, attempt = 0) => {
     try {
       const { data, error } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', userId)
-        .single();
-
+        .from('profiles').select('role').eq('id', userId).single();
       if (!error && data?.role) {
         const r = data.role as Role;
         setRole(r);
-        if (r) localStorage.setItem(cacheKey, r);
-      } else if (!cached && attempt < 2) {
-        // Query failed and no cache — retry after 3s
-        setTimeout(() => fetchRole(userId, attempt + 1), 3000);
-      } else if (!cached) {
-        setRole('player');
+        if (r) localStorage.setItem(ROLE_CACHE(userId), r);
+      } else if (attempt < 2) {
+        setTimeout(() => fetchRoleFromDB(userId, attempt + 1), 3000);
       }
     } catch {
-      if (!cached && attempt < 2) {
-        setTimeout(() => fetchRole(userId, attempt + 1), 3000);
-      } else if (!cached) {
-        setRole('player');
-      }
+      if (attempt < 2) setTimeout(() => fetchRoleFromDB(userId, attempt + 1), 3000);
     }
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-  };
+  const signOut = async () => { await supabase.auth.signOut(); };
 
   return (
     <AuthContext.Provider value={{ session, user, role, loading, recovering, signOut }}>
@@ -143,8 +137,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
