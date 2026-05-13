@@ -7,7 +7,7 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 // returns { data: null, error } instead of hanging or throwing forever.
 const fetchWithTimeout = (url: RequestInfo | URL, options: RequestInit = {}): Promise<Response> => {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 8000);
+  const timer = setTimeout(() => controller.abort(), 5000);
   return fetch(url, { ...options, signal: controller.signal })
     .finally(() => clearTimeout(timer))
     .catch(err => new Response(

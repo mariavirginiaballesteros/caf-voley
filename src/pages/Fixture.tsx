@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase, Match } from '../lib/supabase';
+import { getCache, setCache, clearCache } from '../lib/cache';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
@@ -28,14 +29,14 @@ const Fixture = () => {
   }, []);
 
   const fetchMatches = async () => {
-    const { data, error } = await supabase
-      .from('matches26')
-      .select('*')
-      .order('date', { ascending: true });
-    
-    if (error) toast.error('Error al cargar el fixture');
-    else setMatches(data || []);
-    setLoading(false);
+    const cached = getCache<Match[]>('matches26');
+    if (cached) { setMatches(cached); setLoading(false); }
+    try {
+      const { data, error } = await supabase.from('matches26').select('*').order('date', { ascending: true });
+      if (error) { if (!cached) toast.error('Error al cargar el fixture'); }
+      else { setMatches(data || []); setCache('matches26', data || []); }
+    } catch { if (!cached) toast.error('Error de conexión'); }
+    finally { setLoading(false); }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,6 +46,7 @@ const Fixture = () => {
     else {
       toast.success('Partido guardado correctamente');
       setIsModalOpen(false);
+      clearCache('matches26');
       fetchMatches();
     }
   };

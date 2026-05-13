@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import { Trophy, TrendingUp, Minus, TrendingDown, Edit2, Check, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { getCache, setCache, clearCache } from '../lib/cache';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
@@ -29,13 +30,13 @@ const Standings = () => {
   useEffect(() => { fetchStandings(); }, []);
 
   const fetchStandings = async () => {
-    const { data } = await supabase
-      .from('standings')
-      .select('*')
-      .eq('season', '2026')
-      .order('pos');
-    if (data) setTeams(data);
-    setLoading(false);
+    const cached = getCache<Team[]>('standings');
+    if (cached) { setTeams(cached); setLoading(false); }
+    try {
+      const { data } = await supabase.from('standings').select('*').eq('season', '2026').order('pos');
+      if (data) { setTeams(data); setCache('standings', data); }
+    } catch { /* silent, show cached or empty */ }
+    finally { setLoading(false); }
   };
 
   const startEdit = (team: Team) => {
@@ -46,7 +47,7 @@ const Standings = () => {
   const saveEdit = async (id: string) => {
     const { error } = await supabase.from('standings').update(editData).eq('id', id);
     if (error) toast.error('Error al guardar');
-    else { toast.success('Tabla actualizada'); setEditingId(null); fetchStandings(); }
+    else { toast.success('Tabla actualizada'); setEditingId(null); clearCache('standings'); fetchStandings(); }
   };
 
   const caf = teams.find(t => t.is_caf);

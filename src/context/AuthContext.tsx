@@ -23,10 +23,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [recovering, setRecovering] = useState(false);
 
   useEffect(() => {
-    // Safety timeout: never stay loading more than 6 seconds
-    const timeout = setTimeout(() => setLoading(false), 6000);
+    // Safety: never stay loading more than 2 seconds
+    const timeout = setTimeout(() => setLoading(false), 2000);
 
-    // 1) Get current session — if token is expired, refreshSession handles it
     supabase.auth.getSession().then(async ({ data: { session }, error }) => {
       if (error || !session?.user) {
         setSession(null);
@@ -35,39 +34,43 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         clearTimeout(timeout);
         return;
       }
-      // Check if access token is still valid (not expired)
+
       const expiresAt = session.expires_at ?? 0;
       const nowSec = Math.floor(Date.now() / 1000);
+
       if (expiresAt > 0 && expiresAt < nowSec) {
-        // Token expired — try to refresh
         const { data: refreshed, error: refreshErr } = await supabase.auth.refreshSession();
         if (refreshErr || !refreshed.session) {
-          await supabase.auth.signOut({ scope: 'local' });
+          Object.keys(localStorage).filter(k => k.startsWith('sb-')).forEach(k => localStorage.removeItem(k));
           setSession(null);
           setUser(null);
           setLoading(false);
           clearTimeout(timeout);
-          window.location.href = '/login';
           return;
         }
         setSession(refreshed.session);
         setUser(refreshed.session.user);
-        fetchRole(refreshed.session.user.id).then(() => clearTimeout(timeout));
+        // Unlock UI immediately — role loads in background
+        setLoading(false);
+        clearTimeout(timeout);
+        fetchRole(refreshed.session.user.id);
         return;
       }
+
+      // Session valid — unlock UI immediately, don't wait for role
       setSession(session);
       setUser(session.user);
-      fetchRole(session.user.id).then(() => clearTimeout(timeout));
+      setLoading(false);
+      clearTimeout(timeout);
+      fetchRole(session.user.id);
     });
 
-    // 2) Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
         setSession(session);
         setUser(session?.user ?? null);
         setRecovering(true);
         setLoading(false);
-        clearTimeout(timeout);
         return;
       }
       if (event === 'USER_UPDATED') {
@@ -76,15 +79,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         setSession(session);
         setUser(session?.user ?? null);
-        if (session?.user) await fetchRole(session.user.id);
-        clearTimeout(timeout);
+        setLoading(false);
+        if (session?.user) fetchRole(session.user.id);
       }
       if (event === 'SIGNED_OUT') {
         setSession(null);
         setUser(null);
         setRole(null);
         setLoading(false);
-        clearTimeout(timeout);
       }
     });
 
@@ -101,16 +103,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .select('role')
         .eq('id', userId)
         .single();
-      if (!error && data?.role) {
-        setRole(data.role as Role);
-      } else {
-        // Profile exists but no role — default to player
-        setRole('player');
-      }
+      setRole(!error && data?.role ? (data.role as Role) : 'player');
     } catch {
       setRole('player');
-    } finally {
-      setLoading(false);
     }
   };
 

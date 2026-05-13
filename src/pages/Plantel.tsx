@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase, Player } from '../lib/supabase';
+import { getCache, setCache, clearCache } from '../lib/cache';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
@@ -30,14 +31,14 @@ const Plantel = () => {
   }, []);
 
   const fetchPlayers = async () => {
-    const { data, error } = await supabase
-      .from('players')
-      .select('*')
-      .order('num', { ascending: true });
-    
-    if (error) toast.error('Error al cargar el plantel');
-    else setPlayers(data || []);
-    setLoading(false);
+    const cached = getCache<Player[]>('players');
+    if (cached) { setPlayers(cached); setLoading(false); }
+    try {
+      const { data, error } = await supabase.from('players').select('*').order('num', { ascending: true });
+      if (error) { if (!cached) toast.error('Error al cargar el plantel'); }
+      else { setPlayers(data || []); setCache('players', data || []); }
+    } catch { if (!cached) toast.error('Error de conexión'); }
+    finally { setLoading(false); }
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -79,6 +80,7 @@ const Plantel = () => {
       setIsModalOpen(false);
       setPhotoFile(null);
       setPhotoPreview('');
+      clearCache('players');
       fetchPlayers();
     }
   };
@@ -87,10 +89,7 @@ const Plantel = () => {
     if (!confirm('¿Eliminar jugadora?')) return;
     const { error } = await supabase.from('players').delete().eq('id', id);
     if (error) toast.error('Error al eliminar');
-    else {
-      toast.success('Jugadora eliminada');
-      fetchPlayers();
-    }
+    else { toast.success('Jugadora eliminada'); clearCache('players'); fetchPlayers(); }
   };
 
   return (

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase, Match, Video, Player } from '../lib/supabase';
+import { getCache, setCache } from '../lib/cache';
 import { 
   Trophy, 
   Users, 
@@ -31,19 +32,26 @@ const Index = () => {
   }, []);
 
   const fetchData = async () => {
-    setLoading(true);
+    // Show cached data instantly
+    const cm = getCache<Match[]>('matches26');
+    const cv = getCache<Video[]>('videos');
+    const cp = getCache<Player[]>('players');
+    if (cm) setMatches(cm);
+    if (cv) setVideos(cv);
+    if (cp) setPlayers(cp);
+    if (cm && cv && cp) setLoading(false);
+
     try {
       const [mRes, vRes, pRes] = await Promise.all([
         supabase.from('matches26').select('*').order('date', { ascending: false }),
         supabase.from('videos').select('*').order('date', { ascending: false }),
-        supabase.from('players').select('*')
+        supabase.from('players').select('*'),
       ]);
-
-      setMatches(mRes.data ?? []);
-      setVideos(vRes.data ?? []);
-      setPlayers(pRes.data ?? []);
-    } catch (error) {
-      toast.error('Error al cargar datos');
+      if (mRes.data) { setMatches(mRes.data); setCache('matches26', mRes.data); }
+      if (vRes.data) { setVideos(vRes.data); setCache('videos', vRes.data); }
+      if (pRes.data) { setPlayers(pRes.data); setCache('players', pRes.data); }
+    } catch {
+      if (!cm) toast.error('Error al cargar datos');
     } finally {
       setLoading(false);
     }

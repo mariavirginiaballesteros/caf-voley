@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase, Video } from '../lib/supabase';
+import { getCache, setCache } from '../lib/cache';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
@@ -24,11 +25,15 @@ const Videos = () => {
 
   useEffect(() => { fetchVideos(); }, []);
 
-  const fetchVideos = async () => {
-    const { data, error } = await supabase.from('videos').select('*').order('date', { ascending: false });
-    if (error) toast.error('Error al cargar videos');
-    else setVideos(data || []);
-    setLoading(false);
+  const fetchVideos = async (silent = false) => {
+    const cached = getCache<VideoWithAnalysis[]>('videos');
+    if (cached) { setVideos(cached); setLoading(false); }
+    try {
+      const { data, error } = await supabase.from('videos').select('*').order('date', { ascending: false });
+      if (error) { if (!cached && !silent) toast.error('Error al cargar videos'); }
+      else { setVideos(data || []); setCache('videos', data || []); }
+    } catch { if (!cached && !silent) toast.error('Error de conexión'); }
+    finally { setLoading(false); }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {

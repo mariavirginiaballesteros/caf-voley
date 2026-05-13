@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Trophy,
@@ -17,22 +17,37 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { getCache, setCache } from '../lib/cache';
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const location = useLocation();
-  const navigate = useNavigate();
-  const { role, signOut, user } = useAuth();
-  const [videosCount, setVideosCount] = useState<string>('');
-  const [playersCount, setPlayersCount] = useState<string>('');
-  const [fixtureCount, setFixtureCount] = useState<string>('');
+  const { role, user } = useAuth();
+
+  // Initialize badge counts from cache immediately, then refresh once
+  const [videosCount, setVideosCount] = useState<string>(() => {
+    const c = getCache<unknown[]>('videos'); return c ? String(c.length) : '';
+  });
+  const [playersCount, setPlayersCount] = useState<string>(() => {
+    const c = getCache<unknown[]>('players'); return c ? String(c.length) : '';
+  });
+  const [fixtureCount, setFixtureCount] = useState<string>(() => {
+    const c = getCache<unknown[]>('matches26'); return c ? String(c.length) : '';
+  });
 
   useEffect(() => {
-    supabase.from('videos').select('id', { count: 'exact', head: true })
-      .then(({ count }) => { if (count) setVideosCount(String(count)); });
-    supabase.from('players').select('id', { count: 'exact', head: true })
-      .then(({ count }) => { if (count) setPlayersCount(String(count)); });
-    supabase.from('matches26').select('id', { count: 'exact', head: true })
-      .then(({ count }) => { if (count) setFixtureCount(String(count)); });
+    // Only fetch counts if not already in cache
+    if (!videosCount) {
+      supabase.from('videos').select('id', { count: 'exact', head: true })
+        .then(({ count }) => { if (count) setVideosCount(String(count)); });
+    }
+    if (!playersCount) {
+      supabase.from('players').select('id', { count: 'exact', head: true })
+        .then(({ count }) => { if (count) setPlayersCount(String(count)); });
+    }
+    if (!fixtureCount) {
+      supabase.from('matches26').select('id', { count: 'exact', head: true })
+        .then(({ count }) => { if (count) setFixtureCount(String(count)); });
+    }
   }, []);
 
   const menuGroups = [
