@@ -83,6 +83,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (session?.user) fetchRole(session.user.id);
       }
       if (event === 'SIGNED_OUT') {
+        // Clear cached role
+        Object.keys(localStorage).filter(k => k.startsWith('caf_role_')).forEach(k => localStorage.removeItem(k));
         setSession(null);
         setUser(null);
         setRole(null);
@@ -96,16 +98,35 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
-  const fetchRole = async (userId: string) => {
+  const fetchRole = async (userId: string, attempt = 0) => {
+    // Show cached role instantly while DB loads
+    const cacheKey = `caf_role_${userId}`;
+    const cached = localStorage.getItem(cacheKey) as Role | null;
+    if (cached) setRole(cached);
+
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', userId)
         .single();
-      setRole(!error && data?.role ? (data.role as Role) : 'player');
+
+      if (!error && data?.role) {
+        const r = data.role as Role;
+        setRole(r);
+        localStorage.setItem(cacheKey, r);
+      } else if (!cached && attempt < 2) {
+        // Query failed and no cache — retry after 3s
+        setTimeout(() => fetchRole(userId, attempt + 1), 3000);
+      } else if (!cached) {
+        setRole('player');
+      }
     } catch {
-      setRole('player');
+      if (!cached && attempt < 2) {
+        setTimeout(() => fetchRole(userId, attempt + 1), 3000);
+      } else if (!cached) {
+        setRole('player');
+      }
     }
   };
 
