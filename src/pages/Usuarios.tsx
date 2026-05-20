@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase, Profile } from '../lib/supabase';
 import Layout from '../components/Layout';
 import toast from 'react-hot-toast';
-import { User, UserPlus, X, Link2, Zap } from 'lucide-react';
+import { User, UserPlus, X, Link2, Zap, Mail, Loader } from 'lucide-react';
 
 const ROLE_STYLES = {
   admin: 'bg-red-900/30 text-red-400',
@@ -22,6 +22,7 @@ const Usuarios = () => {
   const [inviting, setInviting] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [autoMatching, setAutoMatching] = useState(false);
+  const [resending, setResending] = useState<Set<string>>(new Set());
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -69,6 +70,17 @@ const Usuarios = () => {
     toast.success(matched > 0 ? `${matched} jugadora${matched > 1 ? 's' : ''} vinculada${matched > 1 ? 's' : ''} automáticamente` : 'No se encontraron coincidencias automáticas');
     fetchAll();
     setAutoMatching(false);
+  };
+
+  const resendLink = async (profileId: string, email: string) => {
+    setResending(prev => new Set(prev).add(profileId));
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: false }
+    });
+    setResending(prev => { const s = new Set(prev); s.delete(profileId); return s; });
+    if (error) toast.error('No se pudo reenviar: ' + error.message);
+    else toast.success(`Link reenviado a ${email}`);
   };
 
   const handleInvite = async (e: React.FormEvent) => {
@@ -156,6 +168,7 @@ const Usuarios = () => {
                 <th className="p-4">Rol</th>
                 <th className="p-4">Jugadora del plantel</th>
                 <th className="p-4 text-right">Cambiar rol</th>
+                <th className="p-4 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#333]">
@@ -222,6 +235,23 @@ const Usuarios = () => {
                         <option value="dt">DT</option>
                         <option value="admin">Admin</option>
                       </select>
+                    </td>
+
+                    {/* Reenviar link */}
+                    <td className="p-4 text-right">
+                      {profile.email && (
+                        <button
+                          onClick={() => resendLink(profile.id, profile.email!)}
+                          disabled={resending.has(profile.id)}
+                          title="Reenviar link de acceso"
+                          className="inline-flex items-center gap-1.5 bg-[#242424] hover:bg-[#333] border border-[#444] text-xs text-gray-400 hover:text-blue-400 px-2.5 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                        >
+                          {resending.has(profile.id)
+                            ? <Loader size={12} className="animate-spin" />
+                            : <Mail size={12} />}
+                          Reenviar
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

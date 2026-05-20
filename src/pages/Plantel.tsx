@@ -4,31 +4,30 @@ import { getCache, setCache, clearCache } from '../lib/cache';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
-import { User, Plus, Trash2, Upload } from 'lucide-react';
+import { User, Plus, Trash2, Upload, Sparkles, Loader, Brain, Share2, Lock, X, Mail, CheckCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 const Plantel = () => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [modalEmail, setModalEmail] = useState('');
+  const [creatingAccount, setCreatingAccount] = useState(false);
   const { role } = useAuth();
   const isAdmin = role === 'admin' || role === 'dt';
 
   const [formData, setFormData] = useState<Partial<Player>>({
-    name: '',
-    num: '',
-    pos: 'Punta',
-    notes: '',
-    photo: ''
+    name: '', num: '', pos: 'Punta', notes: '', photo: ''
   });
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetchPlayers();
-  }, []);
+  useEffect(() => { fetchPlayers(); }, []);
+  useEffect(() => { setModalEmail(selectedPlayer?.email || ''); }, [selectedPlayer]);
 
   const fetchPlayers = async () => {
     const cached = getCache<Player[]>('players');
@@ -51,29 +50,18 @@ const Plantel = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setUploading(true);
-
     let photoUrl = formData.photo || '';
-
     if (photoFile) {
       const ext = photoFile.name.split('.').pop();
       const fileName = `${Date.now()}.${ext}`;
       const { error: uploadError } = await supabase.storage
-        .from('players')
-        .upload(fileName, photoFile, { upsert: true });
-
-      if (uploadError) {
-        toast.error('Error al subir la foto');
-        setUploading(false);
-        return;
-      }
-
+        .from('players').upload(fileName, photoFile, { upsert: true });
+      if (uploadError) { toast.error('Error al subir la foto'); setUploading(false); return; }
       const { data: urlData } = supabase.storage.from('players').getPublicUrl(fileName);
       photoUrl = urlData.publicUrl;
     }
-
     const { error } = await supabase.from('players').insert([{ ...formData, photo: photoUrl }]);
     setUploading(false);
-
     if (error) toast.error('Error al guardar jugadora');
     else {
       toast.success('Jugadora añadida al plantel');
@@ -92,6 +80,73 @@ const Plantel = () => {
     else { toast.success('Jugadora eliminada'); clearCache('players'); fetchPlayers(); }
   };
 
+  const analyzePlayer = async (player: Player) => {
+    if (!player.id) return;
+    setAnalyzingId(player.id);
+    const message = `Realizá un análisis técnico-táctico individual y confidencial para esta jugadora de vóley femenino:
+Nombre: ${player.name}
+Posición: ${player.pos}
+Número: #${player.num}
+Notas del DT: ${player.notes || 'Sin notas adicionales.'}
+
+Incluí en el análisis:
+1. Perfil técnico para la posición de ${player.pos}
+2. Fortalezas a potenciar
+3. Áreas de trabajo y mejora específicas
+4. 2-3 recomendaciones concretas de entrenamiento individual
+
+Sé honesto pero constructivo, orientado al desarrollo individual. Específico para vóley femenino categoría B Argentina.`;
+
+    try {
+      const { data, error } = await supabase.functions.invoke('ai-coach', {
+        body: { message, history: [] }
+      });
+      if (error) throw error;
+      const analysis = data.response;
+      await supabase.from('players').update({ ai_analysis: analysis }).eq('id', player.id);
+      const updated = { ...player, ai_analysis: analysis };
+      setPlayers(prev => prev.map(p => p.id === player.id ? updated : p));
+      setSelectedPlayer(updated);
+      clearCache('players');
+      toast.success('Análisis generado');
+    } catch {
+      toast.error('Error al generar el análisis');
+    } finally {
+      setAnalyzingId(null);
+    }
+  };
+
+  const createAccount = async () => {
+    if (!selectedPlayer?.id || !modalEmail.trim()) return;
+    setCreatingAccount(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-player-account', {
+        body: { email: modalEmail.trim().toLowerCase(), player_id: selectedPlayer.id }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const updated = { ...selectedPlayer, email: modalEmail.trim().toLowerCase() };
+      setPlayers(prev => prev.map(p => p.id === selectedPlayer.id ? updated : p));
+      setSelectedPlayer(updated);
+      clearCache('players');
+      toast.success(`Cuenta creada para ${modalEmail.trim()}`);
+    } catch (err: any) {
+      toast.error(err.message || 'Error al crear la cuenta');
+    } finally {
+      setCreatingAccount(false);
+    }
+  };
+
+  const toggleShare = async (player: Player, shared: boolean) => {
+    if (!player.id) return;
+    await supabase.from('players').update({ analysis_shared: shared }).eq('id', player.id);
+    const updated = { ...player, analysis_shared: shared };
+    setPlayers(prev => prev.map(p => p.id === player.id ? updated : p));
+    setSelectedPlayer(updated);
+    clearCache('players');
+    toast.success(shared ? 'Análisis compartido con la jugadora' : 'Análisis marcado como privado');
+  };
+
   return (
     <Layout>
       <header className="flex justify-between items-end mb-8">
@@ -100,7 +155,7 @@ const Plantel = () => {
           <p className="text-gray-400">Jugadoras activas temporada 2026</p>
         </div>
         {isAdmin && (
-          <button 
+          <button
             onClick={() => setIsModalOpen(true)}
             className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg text-xs font-black flex items-center gap-2 transition-all"
           >
@@ -111,26 +166,35 @@ const Plantel = () => {
 
       {loading ? (
         <div className="flex justify-center py-20">
-          <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {players.map((player) => (
-            <div key={player.id} className="bg-[#1a1a1a] border border-[#333] rounded-2xl overflow-hidden group hover:border-green-600 transition-all relative">
+            <div
+              key={player.id}
+              onClick={() => isAdmin && setSelectedPlayer(player)}
+              className={`bg-[#1a1a1a] border border-[#333] rounded-2xl overflow-hidden group hover:border-green-600 transition-all relative ${isAdmin ? 'cursor-pointer' : ''}`}
+            >
               {isAdmin && (
-                <button 
-                  onClick={() => deletePlayer(player.id!)}
+                <button
+                  onClick={e => { e.stopPropagation(); deletePlayer(player.id!); }}
                   className="absolute top-2 right-2 z-10 p-2 bg-red-900/80 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <Trash2 size={14} />
                 </button>
               )}
+              {player.ai_analysis && (
+                <div className="absolute top-2 left-2 z-10 flex items-center gap-1 bg-purple-900/80 backdrop-blur-sm text-purple-300 text-[9px] font-black px-2 py-1 rounded-full">
+                  <Sparkles size={8} />
+                  {player.analysis_shared ? 'Compartido' : 'Analizada'}
+                </div>
+              )}
               <div className="aspect-square bg-[#242424] relative flex items-center justify-center overflow-hidden">
-                {player.photo ? (
-                  <img src={player.photo} alt={player.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-                ) : (
-                  <User size={64} className="text-gray-700" />
-                )}
+                {player.photo
+                  ? <img src={player.photo} alt={player.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                  : <User size={64} className="text-gray-700" />
+                }
                 <div className="absolute top-4 left-4 bg-green-600 text-white font-black px-3 py-1 rounded-lg shadow-xl">
                   #{player.num}
                 </div>
@@ -139,40 +203,179 @@ const Plantel = () => {
                 <h3 className="font-black text-xl mb-1">{player.name}</h3>
                 <p className="text-green-500 text-sm font-bold uppercase tracking-wider mb-3">{player.pos}</p>
                 <p className="text-gray-400 text-xs line-clamp-2">{player.notes}</p>
+                {isAdmin && (
+                  <p className="text-[10px] text-gray-600 mt-2">Clic para análisis IA →</p>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
 
+      {/* Player detail + analysis modal (admin/dt only) */}
+      {selectedPlayer && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          onClick={() => setSelectedPlayer(null)}
+        >
+          <div
+            className="bg-[#1a1a1a] border border-[#333] w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center p-5 border-b border-[#333]">
+              <div className="flex items-center gap-3">
+                <Brain size={18} className="text-purple-400" />
+                <h3 className="text-lg font-black">
+                  {selectedPlayer.name}
+                  <span className="text-gray-500 font-normal text-base ml-2">#{selectedPlayer.num}</span>
+                </h3>
+              </div>
+              <button onClick={() => setSelectedPlayer(null)} className="text-gray-500 hover:text-white transition-colors">
+                <X size={22} />
+              </button>
+            </div>
+
+            <div className="p-5 max-h-[80vh] overflow-y-auto space-y-5">
+              {/* Player info row */}
+              <div className="flex gap-4 items-start">
+                <div className="w-20 h-20 bg-[#242424] rounded-xl overflow-hidden flex-shrink-0 flex items-center justify-center">
+                  {selectedPlayer.photo
+                    ? <img src={selectedPlayer.photo} alt={selectedPlayer.name} className="w-full h-full object-cover" />
+                    : <User size={32} className="text-gray-700" />
+                  }
+                </div>
+                <div>
+                  <p className="text-green-500 text-sm font-bold uppercase tracking-wider">{selectedPlayer.pos}</p>
+                  {selectedPlayer.notes && <p className="text-gray-400 text-sm mt-1">{selectedPlayer.notes}</p>}
+                </div>
+              </div>
+
+              {/* AI Analysis */}
+              <div className="bg-[#111] border border-[#222] rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles size={13} className="text-purple-400" />
+                    <span className="text-xs font-black text-purple-400 uppercase tracking-widest">Análisis IA Individual</span>
+                  </div>
+                  <button
+                    onClick={() => analyzePlayer(selectedPlayer)}
+                    disabled={analyzingId === selectedPlayer.id}
+                    className="flex items-center gap-1.5 text-[10px] font-black bg-purple-900/30 hover:bg-purple-900/50 border border-purple-900/40 text-purple-400 px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                  >
+                    {analyzingId === selectedPlayer.id
+                      ? <><Loader size={11} className="animate-spin" /> Analizando...</>
+                      : selectedPlayer.ai_analysis
+                        ? 'Re-analizar'
+                        : <><Sparkles size={11} /> Generar análisis</>
+                    }
+                  </button>
+                </div>
+
+                {selectedPlayer.ai_analysis ? (
+
+                  <>
+                    <div className="text-sm text-gray-200 leading-relaxed whitespace-pre-line bg-[#0a0a0a] border border-purple-900/20 rounded-xl p-4 mb-3">
+                      {selectedPlayer.ai_analysis}
+                    </div>
+                    <div className="flex items-center justify-between bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        {selectedPlayer.analysis_shared
+                          ? <Share2 size={13} className="text-green-400" />
+                          : <Lock size={13} className="text-gray-500" />
+                        }
+                        <span className="text-xs text-gray-400">
+                          {selectedPlayer.analysis_shared
+                            ? 'Visible para la jugadora en Mi Perfil'
+                            : 'Privado — solo DT y Admin'}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => toggleShare(selectedPlayer, !selectedPlayer.analysis_shared)}
+                        className={`text-[10px] font-black px-3 py-1.5 rounded-lg transition-all ${
+                          selectedPlayer.analysis_shared
+                            ? 'bg-[#242424] text-gray-400 hover:bg-[#333]'
+                            : 'bg-green-900/30 text-green-400 hover:bg-green-900/50 border border-green-800/40'
+                        }`}
+                      >
+                        {selectedPlayer.analysis_shared ? 'Hacer privado' : 'Compartir con jugadora'}
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-600 text-center py-6">
+                    Generá el análisis técnico-táctico individual para esta jugadora.
+                  </p>
+                )}
+              </div>
+
+              {/* Cuenta de acceso */}
+              <div className="bg-[#111] border border-[#222] rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Mail size={13} className="text-blue-400" />
+                  <span className="text-xs font-black text-blue-400 uppercase tracking-widest">Cuenta de acceso</span>
+                  {selectedPlayer.email && (
+                    <span className="ml-auto flex items-center gap-1 text-[10px] text-green-400 font-bold">
+                      <CheckCircle size={11} /> Activa
+                    </span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={modalEmail}
+                    onChange={e => setModalEmail(e.target.value)}
+                    placeholder="email@ejemplo.com"
+                    className="flex-1 bg-[#1a1a1a] border border-[#333] rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500 transition-colors"
+                  />
+                  <button
+                    onClick={createAccount}
+                    disabled={creatingAccount || !modalEmail.trim()}
+                    className="flex items-center gap-1.5 text-[11px] font-black bg-blue-900/30 hover:bg-blue-900/50 border border-blue-900/40 text-blue-400 px-3 py-2 rounded-lg transition-all disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {creatingAccount ? <Loader size={12} className="animate-spin" /> : <Mail size={12} />}
+                    {creatingAccount ? 'Creando...' : selectedPlayer.email ? 'Actualizar' : 'Crear cuenta'}
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-600 mt-2">
+                  {selectedPlayer.email
+                    ? `Contraseña: Panteras2026 · Email: ${selectedPlayer.email}`
+                    : 'La cuenta se crea con contraseña Panteras2026 y queda vinculada automáticamente.'}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal agregar jugadora */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Agregar Jugadora">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-3 gap-4">
             <div className="col-span-2">
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Nombre Completo</label>
-              <input 
+              <input
                 type="text" required
                 className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
                 value={formData.name}
-                onChange={e => setFormData({...formData, name: e.target.value})}
+                onChange={e => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Número</label>
-              <input 
+              <input
                 type="text" required
                 className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
                 value={formData.num}
-                onChange={e => setFormData({...formData, num: e.target.value})}
+                onChange={e => setFormData({ ...formData, num: e.target.value })}
               />
             </div>
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Posición</label>
-            <select 
+            <select
               className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
               value={formData.pos}
-              onChange={e => setFormData({...formData, pos: e.target.value})}
+              onChange={e => setFormData({ ...formData, pos: e.target.value })}
             >
               <option value="Armadora">Armadora</option>
               <option value="Punta">Punta</option>
@@ -188,26 +391,22 @@ const Plantel = () => {
               onClick={() => fileInputRef.current?.click()}
               className="w-full bg-[#242424] border border-dashed border-[#444] rounded-lg p-4 text-sm text-gray-500 cursor-pointer hover:border-green-500 hover:text-green-400 transition-all flex flex-col items-center gap-2"
             >
-              {photoPreview ? (
-                <img src={photoPreview} className="w-20 h-20 object-cover rounded-lg" />
-              ) : (
-                <>
-                  <Upload size={20} />
-                  <span className="text-xs">Subir foto desde tu dispositivo</span>
-                </>
-              )}
+              {photoPreview
+                ? <img src={photoPreview} className="w-20 h-20 object-cover rounded-lg" />
+                : <><Upload size={20} /><span className="text-xs">Subir foto desde tu dispositivo</span></>
+              }
             </div>
           </div>
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Notas / Perfil</label>
-            <textarea 
+            <textarea
               rows={3}
               className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
               value={formData.notes}
-              onChange={e => setFormData({...formData, notes: e.target.value})}
+              onChange={e => setFormData({ ...formData, notes: e.target.value })}
             />
           </div>
-          <button type="submit" disabled={uploading} className="w-full bg-green-700 hover:bg-green-600 py-3 rounded-xl font-black text-sm transition-all mt-4 disabled:opacity-50">
+          <button type="submit" disabled={uploading} className="w-full bg-green-700 hover:bg-green-600 py-3 rounded-xl font-black text-sm transition-all disabled:opacity-50">
             {uploading ? 'Guardando...' : 'Guardar Jugadora'}
           </button>
         </form>

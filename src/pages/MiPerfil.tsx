@@ -6,7 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { User, BookOpen, Brain, Plus, Trash2, Sparkles, ToggleLeft, ToggleRight, Loader } from 'lucide-react';
 
 type JournalEntry = { id: string; date: string; content: string };
-type PlayerData = { name: string; num: string; pos: string; photo: string | null };
+type PlayerData = { name: string; num: string; pos: string; photo: string | null; ai_analysis?: string | null; analysis_shared?: boolean };
 
 const MiPerfil = () => {
   const { user } = useAuth();
@@ -41,7 +41,7 @@ const MiPerfil = () => {
       if (data.player_id) {
         const { data: player } = await supabase
           .from('players')
-          .select('name, num, pos, photo')
+          .select('name, num, pos, photo, ai_analysis, analysis_shared')
           .eq('id', data.player_id)
           .single();
         if (player) setPlayerData(player);
@@ -190,6 +190,24 @@ Sé breve (máximo 3 oraciones), positiva y orientada al crecimiento personal y 
 
         {/* Columna derecha — diario + IA */}
         <div className="lg:col-span-2 space-y-6">
+
+          {/* Análisis técnico compartido por DT */}
+          {playerData && (
+            <div className={`rounded-2xl p-5 ${playerData.analysis_shared && playerData.ai_analysis ? 'bg-purple-900/10 border border-purple-800/40' : 'bg-[#1a1a1a] border border-[#333]'}`}>
+              <h3 className="font-black text-base flex items-center gap-2 mb-3">
+                <Sparkles size={18} className={playerData.analysis_shared && playerData.ai_analysis ? 'text-purple-400' : 'text-gray-600'} />
+                Análisis técnico individual
+              </h3>
+              {playerData.analysis_shared && playerData.ai_analysis ? (
+                <div className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">
+                  <p className="text-[10px] font-black text-purple-400 uppercase tracking-widest mb-2">Compartido por tu DT</p>
+                  {playerData.ai_analysis}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-600">Tu DT todavía no compartió tu análisis individual.</p>
+              )}
+            </div>
+          )}
 
           {/* Toggle IA */}
           <div className="bg-[#1a1a1a] border border-[#333] rounded-2xl p-5">

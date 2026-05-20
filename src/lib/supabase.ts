@@ -50,6 +50,9 @@ export type Player = {
   notes: string;
   photo: string | null;
   journal: any[];
+  ai_analysis?: string | null;
+  analysis_shared?: boolean;
+  email?: string | null;
 };
 
 export type DTContext = {

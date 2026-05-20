@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAF Funes · Ingresar</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.wrap{width:100%;max-width:420px}
+
+/* Logo */
+.logo-area{text-align:center;margin-bottom:36px}
+.logo-area svg{width:64px;height:76px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.6))}
+.logo-area h1{font-size:22px;font-weight:900;margin-top:14px;letter-spacing:-.3px}
+.logo-area p{font-size:13px;color:#66BB6A;margin-top:4px;font-weight:500}
+.logo-area .badge{display:inline-block;background:linear-gradient(135deg,#C8962C,#FFD700);color:#000;font-size:10px;font-weight:800;padding:3px 10px;border-radius:20px;margin-top:8px;letter-spacing:.4px;text-transform:uppercase}
+
+/* Card */
+.card{background:#111;border:1px solid #222;border-radius:18px;padding:32px}
+
+/* States */
+.state{display:none}
+.state.active{display:block}
+
+/* Form */
+.card h2{font-size:17px;font-weight:800;margin-bottom:6px}
+.card .sub{font-size:12.5px;color:#888;margin-bottom:24px;line-height:1.5}
+.fg{margin-bottom:16px}
+.fl{display:block;font-size:10.5px;font-weight:700;color:#888;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.fi{width:100%;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:9px;padding:11px 14px;color:#fff;font-size:13px;font-family:'Inter',sans-serif;transition:border .15s;outline:none}
+.fi:focus{border-color:#388E3C}
+.fi::placeholder{color:#555}
+.btn{width:100%;padding:12px;border-radius:9px;border:none;font-size:13px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:7px}
+.btn-primary{background:linear-gradient(135deg,#2E7D32,#43A047);color:#fff}
+.btn-primary:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.btn-primary:disabled{opacity:.5;transform:none;cursor:not-allowed}
+.btn-ghost{background:#1a1a1a;color:#ccc;border:1px solid #2a2a2a;margin-top:10px}
+.btn-ghost:hover{background:#222;color:#fff}
+
+/* Error */
+.err{background:rgba(229,57,53,.12);border:1px solid rgba(229,57,53,.3);border-radius:8px;padding:10px 13px;font-size:12px;color:#EF9A9A;margin-bottom:14px;display:none}
+.err.show{display:block}
+
+/* Success state */
+.success-icon{width:64px;height:64px;background:rgba(46,125,50,.15);border:2px solid rgba(46,125,50,.4);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px}
+.success-title{font-size:19px;font-weight:900;text-align:center;margin-bottom:8px}
+.success-sub{font-size:13px;color:#888;text-align:center;line-height:1.6;margin-bottom:6px}
+.success-email{font-size:13px;color:#66BB6A;text-align:center;font-weight:700;margin-bottom:24px;word-break:break-all}
+.divider{border:none;border-top:1px solid #222;margin:20px 0}
+.hint{font-size:11px;color:#555;text-align:center;line-height:1.6}
+
+/* Loading state */
+.loading-wrap{text-align:center;padding:20px 0}
+.spinner{width:40px;height:40px;border:3px solid #1B5E20;border-top-color:#66BB6A;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-wrap p{font-size:13px;color:#888}
+
+/* Role badge */
+.role-badge{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:10.5px;font-weight:700;margin-bottom:14px}
+.role-dt{background:rgba(255,215,0,.12);color:#FFD700;border:1px solid rgba(255,215,0,.25)}
+.role-player{background:rgba(46,125,50,.15);color:#66BB6A;border:1px solid rgba(46,125,50,.3)}
+.role-admin{background:rgba(66,165,245,.12);color:#90CAF9;border:1px solid rgba(66,165,245,.25)}
+
+/* Already logged */
+.user-email{font-size:14px;font-weight:700;text-align:center;margin-bottom:4px}
+.user-sub{font-size:12px;color:#666;text-align:center;margin-bottom:20px}
+
+/* Footer */
+.footer{text-align:center;margin-top:24px;font-size:11px;color:#444}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <!-- Logo -->
+  <div class="logo-area">
+    <svg viewBox="0 0 100 118" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="brd" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#D4A017"/>
+          <stop offset="50%" stop-color="#F5C842"/>
+          <stop offset="100%" stop-color="#A07010"/>
+        </linearGradient>
+        <clipPath id="shp">
+          <path d="M50 4 L93 18 L93 72 Q93 108 50 116 Q7 108 7 72 L7 18 Z"/>
+        </clipPath>
+      </defs>
+      <path d="M50 2 L96 17 L96 72 Q96 112 50 118 Q4 112 4 72 L4 17 Z" fill="url(#brd)"/>
+      <g clip-path="url(#shp)">
+        <rect x="7" y="4" width="29" height="113" fill="#1B5E20"/>
+        <rect x="36" y="4" width="28" height="113" fill="#F5C518"/>
+        <rect x="64" y="4" width="29" height="113" fill="#1B5E20"/>
+      </g>
+      <circle cx="50" cy="66" r="22" fill="url(#brd)"/>
+      <circle cx="50" cy="66" r="18.5" fill="#FAFAF0" stroke="#5BA8CF" stroke-width="2.2"/>
+      <text x="50" y="61" text-anchor="middle" font-family="Georgia,Times,serif" font-weight="900" font-size="9.5" fill="#1B5E20" letter-spacing="1.5">CAF</text>
+      <path d="M38 70 Q50 78 62 70" fill="none" stroke="#A07010" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M38 74 Q50 82 62 74" fill="none" stroke="#A07010" stroke-width="1" stroke-linecap="round"/>
+    </svg>
+    <h1>CAF Funes Vóley</h1>
+    <p>Maxi Femenino · Categoría B 2026</p>
+    <span class="badge">⬆ Ascenso histórico</span>
+  </div>
+
+  <div class="card">
+
+    <!-- STATE: verificando sesión -->
+    <div class="state active" id="state-loading">
+      <div class="loading-wrap">
+        <div class="spinner"></div>
+        <p>Verificando sesión...</p>
+      </div>
+    </div>
+
+    <!-- STATE: ya está logueada -->
+    <div class="state" id="state-logged">
+      <div class="success-icon">👋</div>
+      <div class="success-title">¡Ya estás adentro!</div>
+      <div class="user-email" id="logged-email"></div>
+      <div id="logged-role-badge"></div>
+      <div class="user-sub">Tu cuenta está activa</div>
+      <button class="btn btn-primary" onclick="goToApp()">
+        Ir a la app →
+      </button>
+      <button class="btn btn-ghost" onclick="doLogout()">
+        Cerrar sesión
+      </button>
+    </div>
+
+    <!-- STATE: formulario de login -->
+    <div class="state" id="state-form">
+      <h2>Ingresá al equipo</h2>
+      <p class="sub">Usá tu email y la contraseña que te dieron para entrar.</p>
+      <div class="err" id="form-err"></div>
+      <div class="fg">
+        <label class="fl">Tu email</label>
+        <input class="fi" type="email" id="email-input" placeholder="jugadora@email.com" autocomplete="email">
+      </div>
+      <div class="fg">
+        <label class="fl">Contraseña</label>
+        <input class="fi" type="password" id="password-input" placeholder="••••••••••••" autocomplete="current-password">
+      </div>
+      <button class="btn btn-primary" id="btn-send" onclick="doLogin()">
+        Ingresar
+      </button>
+      <hr class="divider">
+      <p class="hint">Solo las jugadoras y el DT registradas en el sistema pueden ingresar. Si no podés entrar, contactá a tu entrenadora.</p>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    CAF Funes · Maxi Vóley Femenino · 2026
+  </div>
+</div>
+
+<script>
+const SUPA_URL = 'https://bvrotpmkazxhyiyohnle.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ2cm90cG1rYXp4aHlpeW9obmxlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzczODgyMDEsImV4cCI6MjA5Mjk2NDIwMX0.mzevjc__9yQnX3r8QG-TTVhbIM5SgMTByUkhwWIDugA';
+const supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
+
+const ROLE_LABELS = { dt:'🏐 Entrenadora DT', admin:'⚙️ Admin', player:'🏐 Jugadora' };
+const ROLE_CLASS  = { dt:'role-dt', admin:'role-admin', player:'role-player' };
+
+function show(id) {
+  document.querySelectorAll('.state').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showForm() { show('state-form'); }
+
+async function init() {
+  const { data: { session } } = await supa.auth.getSession();
+  if (session) {
+    showLoggedIn(session.user);
+    return;
+  }
+  show('state-form');
+}
+
+function showLoggedIn(user) {
+  const email = user.email || '';
+  const role = user.user_metadata?.role || 'player';
+  document.getElementById('logged-email').textContent = email;
+  document.getElementById('logged-role-badge').innerHTML =
+    `<div style="text-align:center;margin-bottom:16px"><span class="role-badge ${ROLE_CLASS[role]||'role-player'}">${ROLE_LABELS[role]||'Jugadora'}</span></div>`;
+  show('state-logged');
+}
+
+function goToApp() {
+  window.location.href = '/';
+}
+
+async function doLogout() {
+  await supa.auth.signOut();
+  show('state-form');
+}
+
+async function doLogin() {
+  const email = document.getElementById('email-input').value.trim().toLowerCase();
+  const password = document.getElementById('password-input').value;
+  const errEl = document.getElementById('form-err');
+  const btn = document.getElementById('btn-send');
+
+  errEl.classList.remove('show');
+
+  if (!email || !email.includes('@')) {
+    errEl.textContent = 'Ingresá un email válido.';
+    errEl.classList.add('show');
+    return;
+  }
+  if (!password) {
+    errEl.textContent = 'Ingresá tu contraseña.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Ingresando...';
+
+  const { data, error } = await supa.auth.signInWithPassword({ email, password });
+
+  btn.disabled = false;
+  btn.textContent = 'Ingresar';
+
+  if (error) {
+    if (error.message.includes('Invalid login') || error.message.includes('credentials')) {
+      errEl.textContent = 'Email o contraseña incorrectos. Verificá tus datos.';
+    } else {
+      errEl.textContent = 'Error al ingresar. Intentá de nuevo.';
+    }
+    errEl.classList.add('show');
+    return;
+  }
+
+  window.location.href = '/';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const handler = e => { if (e.key === 'Enter') doLogin(); };
+  document.getElementById('email-input')?.addEventListener('keypress', handler);
+  document.getElementById('password-input')?.addEventListener('keypress', handler);
+});
+
+init();
+</script>
+</body>
+</html>
