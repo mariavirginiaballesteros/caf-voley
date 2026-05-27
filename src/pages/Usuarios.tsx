@@ -191,17 +191,38 @@ const Usuarios = () => {
     e.preventDefault();
     setInviting(true);
     const email = inviteEmail.trim().toLowerCase();
-    const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: { data: { role: inviteRole } },
-    });
-    if (!error) {
-      const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('invitations').insert({ email, role: inviteRole, invited_by: user?.id });
+    try {
+      const { data: { user }, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !user) throw new Error('No autenticado');
+
+      const { data: myProfile } = await supabase.from('profiles').select('first_name, last_name').eq('id', user.id).single();
+      const invitedBy = [myProfile?.first_name, myProfile?.last_name].filter(Boolean).join(' ') || user.email || 'El equipo';
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL || 'https://bvrotpmkazxhyiyohnle.supabase.co'}/functions/v1/send-invitation`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token}`,
+          },
+          body: JSON.stringify({ email, role: inviteRole, invitedBy }),
+        }
+      );
+
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Error al enviar');
+
+      await supabase.from('invitations').insert({ email, role: inviteRole, invited_by: user.id });
+      toast.success(`Invitación enviada a ${email}`);
+      setInviteEmail('');
+      setShowInvite(false);
+    } catch (err) {
+      toast.error('No se pudo invitar: ' + (err instanceof Error ? err.message : 'Error desconocido'));
+    } finally {
+      setInviting(false);
     }
-    setInviting(false);
-    if (error) toast.error('No se pudo invitar: ' + error.message);
-    else { toast.success(`Invitación enviada a ${email}`); setInviteEmail(''); setShowInvite(false); }
   };
 
   const linkedPlayerIds = new Set(profiles.map(p => p.player_id).filter(Boolean));
