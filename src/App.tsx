@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { useSessionTracker } from './lib/useSessionTracker';
 import Index from './pages/Index';
 import Fixture from './pages/Fixture';
 import Plantel from './pages/Plantel';
@@ -28,6 +29,9 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode, roles?
 };
 
 function AppRoutes() {
+  const { user } = useAuth();
+  useSessionTracker(user?.id);
+
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
