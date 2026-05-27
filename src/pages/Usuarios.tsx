@@ -89,13 +89,21 @@ const Usuarios = () => {
         supabase.from('session_logs').select('user_id, duration_minutes'),
       ]);
 
+      if (profilesRes.error) console.error('profiles error:', profilesRes.error);
+      if (invitsRes.error) console.error('invitations error:', invitsRes.error);
+      if (sessionsRes.error) console.error('sessions error:', sessionsRes.error);
+
       const allProfiles = profilesRes.data || [];
+      console.log('profiles loaded:', allProfiles.length, allProfiles);
+
       const profileIds = allProfiles.map((p: any) => p.id);
 
       let authStats: AuthStat[] = [];
       if (profileIds.length > 0) {
-        const { data } = await supabase.rpc('get_user_auth_stats', { p_user_ids: profileIds });
+        const { data, error } = await supabase.rpc('get_user_auth_stats', { p_user_ids: profileIds });
+        if (error) console.error('rpc error:', error);
         authStats = data || [];
+        console.log('auth stats:', authStats.length);
       }
       const statsMap = Object.fromEntries(authStats.map(s => [s.id, s]));
 
@@ -135,12 +143,16 @@ const Usuarios = () => {
         }
       });
 
+      console.log('historial entries:', byEmail.size);
       setHistorial(
         Array.from(byEmail.values()).sort((a, b) => {
           if (a.hasLoggedIn !== b.hasLoggedIn) return a.hasLoggedIn ? -1 : 1;
           return (b.lastSignIn || '').localeCompare(a.lastSignIn || '');
         })
       );
+    } catch (err) {
+      console.error('fetchHistorial threw:', err);
+      toast.error('Error cargando historial');
     } finally {
       setLoadingHistorial(false);
     }
