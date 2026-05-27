@@ -39,10 +39,20 @@ body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#fff;min-height:100
 .btn-primary:disabled{opacity:.5;transform:none;cursor:not-allowed}
 .btn-ghost{background:#1a1a1a;color:#ccc;border:1px solid #2a2a2a;margin-top:10px}
 .btn-ghost:hover{background:#222;color:#fff}
+.btn-blue{background:linear-gradient(135deg,#1565C0,#1976D2);color:#fff}
+.btn-blue:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.btn-blue:disabled{opacity:.5;transform:none;cursor:not-allowed}
+
+/* Forgot link */
+.forgot-link{display:block;text-align:right;font-size:11.5px;color:#555;margin-top:-8px;margin-bottom:16px;cursor:pointer;text-decoration:none;transition:color .15s}
+.forgot-link:hover{color:#66BB6A}
 
 /* Error */
 .err{background:rgba(229,57,53,.12);border:1px solid rgba(229,57,53,.3);border-radius:8px;padding:10px 13px;font-size:12px;color:#EF9A9A;margin-bottom:14px;display:none}
 .err.show{display:block}
+
+/* Info box */
+.info-box{background:rgba(25,118,210,.1);border:1px solid rgba(25,118,210,.3);border-radius:8px;padding:12px 14px;font-size:12px;color:#90CAF9;margin-bottom:16px;line-height:1.6}
 
 /* Success state */
 .success-icon{width:64px;height:64px;background:rgba(46,125,50,.15);border:2px solid rgba(46,125,50,.4);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:28px}
@@ -67,6 +77,10 @@ body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#fff;min-height:100
 /* Already logged */
 .user-email{font-size:14px;font-weight:700;text-align:center;margin-bottom:4px}
 .user-sub{font-size:12px;color:#666;text-align:center;margin-bottom:20px}
+
+/* Password strength */
+.pwd-strength{height:3px;border-radius:2px;margin-top:6px;transition:all .3s}
+.pwd-hint{font-size:10.5px;color:#555;margin-top:5px}
 
 /* Footer */
 .footer{text-align:center;margin-top:24px;font-size:11px;color:#444}
@@ -133,7 +147,7 @@ body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#fff;min-height:100
     <!-- STATE: formulario de login -->
     <div class="state" id="state-form">
       <h2>Ingresá al equipo</h2>
-      <p class="sub">Usá tu email y la contraseña que te dieron para entrar.</p>
+      <p class="sub">Usá tu email y la contraseña para entrar.</p>
       <div class="err" id="form-err"></div>
       <div class="fg">
         <label class="fl">Tu email</label>
@@ -143,11 +157,75 @@ body{font-family:'Inter',sans-serif;background:#0a0a0a;color:#fff;min-height:100
         <label class="fl">Contraseña</label>
         <input class="fi" type="password" id="password-input" placeholder="••••••••••••" autocomplete="current-password">
       </div>
+      <a class="forgot-link" onclick="show('state-forgot')">¿Olvidaste tu contraseña?</a>
       <button class="btn btn-primary" id="btn-send" onclick="doLogin()">
         Ingresar
       </button>
       <hr class="divider">
       <p class="hint">Solo las jugadoras y el DT registradas en el sistema pueden ingresar. Si no podés entrar, contactá a tu entrenadora.</p>
+    </div>
+
+    <!-- STATE: olvidé mi contraseña -->
+    <div class="state" id="state-forgot">
+      <h2>Recuperar contraseña</h2>
+      <p class="sub">Ingresá tu email y te mandamos un link para crear una nueva contraseña.</p>
+      <div class="err" id="forgot-err"></div>
+      <div class="fg">
+        <label class="fl">Tu email</label>
+        <input class="fi" type="email" id="forgot-email" placeholder="jugadora@email.com" autocomplete="email">
+      </div>
+      <button class="btn btn-primary" id="btn-forgot" onclick="doForgot()">
+        Enviar link de recuperación
+      </button>
+      <button class="btn btn-ghost" onclick="show('state-form')">
+        ← Volver al inicio
+      </button>
+    </div>
+
+    <!-- STATE: email enviado -->
+    <div class="state" id="state-forgot-sent">
+      <div class="success-icon">📬</div>
+      <div class="success-title">¡Revisá tu email!</div>
+      <div class="success-sub">Te mandamos un link a</div>
+      <div class="success-email" id="forgot-sent-email"></div>
+      <div class="info-box">
+        Hacé clic en el link del email para crear tu nueva contraseña. El link vence en 1 hora.<br><br>
+        Si no lo encontrás, revisá la carpeta de spam.
+      </div>
+      <button class="btn btn-ghost" onclick="show('state-form')">
+        ← Volver al inicio
+      </button>
+    </div>
+
+    <!-- STATE: crear nueva contraseña (llega desde el link del email) -->
+    <div class="state" id="state-recovery">
+      <div class="success-icon" style="font-size:22px;margin-bottom:16px">🔑</div>
+      <h2 style="text-align:center;margin-bottom:6px">Nueva contraseña</h2>
+      <p class="sub" style="text-align:center">Elegí una contraseña nueva y segura para tu cuenta.</p>
+      <div class="err" id="recovery-err"></div>
+      <div class="fg">
+        <label class="fl">Nueva contraseña</label>
+        <input class="fi" type="password" id="new-password" placeholder="Mínimo 6 caracteres" autocomplete="new-password" oninput="checkStrength()">
+        <div class="pwd-strength" id="pwd-strength-bar" style="background:#222"></div>
+        <div class="pwd-hint" id="pwd-strength-text"></div>
+      </div>
+      <div class="fg">
+        <label class="fl">Repetir contraseña</label>
+        <input class="fi" type="password" id="new-password2" placeholder="••••••••••••" autocomplete="new-password">
+      </div>
+      <button class="btn btn-blue" id="btn-recovery" onclick="doResetPassword()">
+        Guardar nueva contraseña
+      </button>
+    </div>
+
+    <!-- STATE: contraseña cambiada con éxito -->
+    <div class="state" id="state-recovery-done">
+      <div class="success-icon">✅</div>
+      <div class="success-title">¡Contraseña actualizada!</div>
+      <div class="success-sub">Tu nueva contraseña quedó guardada. Ya podés ingresar a la app.</div>
+      <button class="btn btn-primary" onclick="goToApp()" style="margin-top:20px">
+        Ir a la app →
+      </button>
     </div>
 
   </div>
@@ -165,14 +243,26 @@ const supa = window.supabase.createClient(SUPA_URL, SUPA_KEY);
 const ROLE_LABELS = { dt:'🏐 Entrenadora DT', admin:'⚙️ Admin', player:'🏐 Jugadora' };
 const ROLE_CLASS  = { dt:'role-dt', admin:'role-admin', player:'role-player' };
 
+// Escucha el evento de recuperación ANTES de init()
+supa.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') {
+    show('state-recovery');
+  }
+});
+
 function show(id) {
   document.querySelectorAll('.state').forEach(s => s.classList.remove('active'));
   document.getElementById(id).classList.add('active');
 }
 
-function showForm() { show('state-form'); }
-
 async function init() {
+  // Si el hash tiene type=recovery, Supabase dispara PASSWORD_RECOVERY via onAuthStateChange
+  const hash = window.location.hash;
+  if (hash.includes('type=recovery')) {
+    // Supabase lo maneja solo, queda en state-loading hasta que onAuthStateChange dispare
+    return;
+  }
+
   const { data: { session } } = await supa.auth.getSession();
   if (session) {
     showLoggedIn(session.user);
@@ -239,10 +329,106 @@ async function doLogin() {
   window.location.href = '/';
 }
 
+async function doForgot() {
+  const email = document.getElementById('forgot-email').value.trim().toLowerCase();
+  const errEl = document.getElementById('forgot-err');
+  const btn = document.getElementById('btn-forgot');
+
+  errEl.classList.remove('show');
+
+  if (!email || !email.includes('@')) {
+    errEl.textContent = 'Ingresá un email válido.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Enviando...';
+
+  const redirectTo = window.location.origin + '/login.html';
+  const { error } = await supa.auth.resetPasswordForEmail(email, { redirectTo });
+
+  btn.disabled = false;
+  btn.textContent = 'Enviar link de recuperación';
+
+  if (error) {
+    errEl.textContent = 'No se pudo enviar el email. Verificá que el email esté registrado.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  document.getElementById('forgot-sent-email').textContent = email;
+  show('state-forgot-sent');
+}
+
+async function doResetPassword() {
+  const pass = document.getElementById('new-password').value;
+  const pass2 = document.getElementById('new-password2').value;
+  const errEl = document.getElementById('recovery-err');
+  const btn = document.getElementById('btn-recovery');
+
+  errEl.classList.remove('show');
+
+  if (pass.length < 6) {
+    errEl.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+    errEl.classList.add('show');
+    return;
+  }
+  if (pass !== pass2) {
+    errEl.textContent = 'Las contraseñas no coinciden. Verificá que sean iguales.';
+    errEl.classList.add('show');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Guardando...';
+
+  const { error } = await supa.auth.updateUser({ password: pass });
+
+  btn.disabled = false;
+  btn.textContent = 'Guardar nueva contraseña';
+
+  if (error) {
+    errEl.textContent = 'Error al guardar: ' + error.message;
+    errEl.classList.add('show');
+    return;
+  }
+
+  show('state-recovery-done');
+}
+
+function checkStrength() {
+  const pass = document.getElementById('new-password').value;
+  const bar = document.getElementById('pwd-strength-bar');
+  const txt = document.getElementById('pwd-strength-text');
+  if (!pass) { bar.style.background = '#222'; txt.textContent = ''; return; }
+  const len = pass.length;
+  const hasNum = /\d/.test(pass);
+  const hasMix = /[a-z]/.test(pass) && /[A-Z]/.test(pass);
+  let score = 0;
+  if (len >= 6) score++;
+  if (len >= 10) score++;
+  if (hasNum) score++;
+  if (hasMix) score++;
+  const levels = [
+    { color: '#E53935', text: 'Muy débil' },
+    { color: '#FB8C00', text: 'Débil' },
+    { color: '#FDD835', text: 'Regular' },
+    { color: '#43A047', text: 'Buena' },
+    { color: '#1B5E20', text: 'Muy segura ✓' },
+  ];
+  const lvl = levels[Math.min(score, 4)];
+  bar.style.background = lvl.color;
+  txt.textContent = lvl.text;
+  txt.style.color = lvl.color;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  const handler = e => { if (e.key === 'Enter') doLogin(); };
-  document.getElementById('email-input')?.addEventListener('keypress', handler);
-  document.getElementById('password-input')?.addEventListener('keypress', handler);
+  const loginHandler = e => { if (e.key === 'Enter') doLogin(); };
+  document.getElementById('email-input')?.addEventListener('keypress', loginHandler);
+  document.getElementById('password-input')?.addEventListener('keypress', loginHandler);
+  document.getElementById('forgot-email')?.addEventListener('keypress', e => { if (e.key === 'Enter') doForgot(); });
+  document.getElementById('new-password2')?.addEventListener('keypress', e => { if (e.key === 'Enter') doResetPassword(); });
 });
 
 init();
