@@ -22,6 +22,7 @@ type Invitation = {
 
 type AuthStat = {
   id: string;
+  email: string | null;
   last_sign_in_at: string | null;
   email_confirmed_at: string | null;
   created_at: string;
@@ -103,10 +104,11 @@ const Usuarios = () => {
       const byEmail = new Map<string, HistorialEntry>();
 
       profiles.forEach(p => {
-        if (!p.email) return;
         const stat = statsMap[p.id];
-        byEmail.set(p.email.toLowerCase(), {
-          email: p.email,
+        const email = p.email || stat?.email || null;
+        if (!email) return;
+        byEmail.set(email.toLowerCase(), {
+          email,
           role: p.role,
           profileId: p.id,
           lastSignIn: stat?.last_sign_in_at,
