@@ -83,12 +83,15 @@ const Usuarios = () => {
   const fetchHistorial = useCallback(async () => {
     setLoadingHistorial(true);
     try {
-      const [invitsRes, sessionsRes] = await Promise.all([
+      const [profilesRes, invitsRes, sessionsRes] = await Promise.all([
+        supabase.from('profiles').select('id, email, role'),
         supabase.from('invitations').select('*').order('invited_at', { ascending: false }),
         supabase.from('session_logs').select('user_id, duration_minutes'),
       ]);
 
-      const profileIds = profiles.map(p => p.id);
+      const allProfiles = profilesRes.data || [];
+      const profileIds = allProfiles.map((p: any) => p.id);
+
       let authStats: AuthStat[] = [];
       if (profileIds.length > 0) {
         const { data } = await supabase.rpc('get_user_auth_stats', { p_user_ids: profileIds });
@@ -97,13 +100,13 @@ const Usuarios = () => {
       const statsMap = Object.fromEntries(authStats.map(s => [s.id, s]));
 
       const totals: Record<string, number> = {};
-      (sessionsRes.data || []).forEach(s => {
+      (sessionsRes.data || []).forEach((s: any) => {
         totals[s.user_id] = (totals[s.user_id] || 0) + (s.duration_minutes || 0);
       });
 
       const byEmail = new Map<string, HistorialEntry>();
 
-      profiles.forEach(p => {
+      allProfiles.forEach((p: any) => {
         const stat = statsMap[p.id];
         const email = p.email || stat?.email || null;
         if (!email) return;
@@ -141,7 +144,7 @@ const Usuarios = () => {
     } finally {
       setLoadingHistorial(false);
     }
-  }, [profiles]);
+  }, []);
 
   useEffect(() => {
     if (tab === 'historial') fetchHistorial();
