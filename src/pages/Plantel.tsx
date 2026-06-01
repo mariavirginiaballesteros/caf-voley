@@ -4,11 +4,21 @@ import { getCache, setCache, clearCache } from '../lib/cache';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
-import { User, Plus, Trash2, Upload, Sparkles, Loader, Brain, Share2, Lock, X, Mail, CheckCircle } from 'lucide-react';
+import { User, Plus, Trash2, Upload, Sparkles, Loader, Brain, Share2, Lock, X, Mail, CheckCircle, Shield } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+
+type DTProfile = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  avatar_url?: string | null;
+  email?: string;
+};
 
 const Plantel = () => {
   const [players, setPlayers] = useState<Player[]>([]);
+  const [dtProfiles, setDtProfiles] = useState<DTProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
@@ -26,7 +36,7 @@ const Plantel = () => {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { fetchPlayers(); }, []);
+  useEffect(() => { fetchPlayers(); fetchDT(); }, []);
   useEffect(() => { setModalEmail(selectedPlayer?.email || ''); }, [selectedPlayer]);
 
   const fetchPlayers = async () => {
@@ -38,6 +48,14 @@ const Plantel = () => {
       else { setPlayers(data || []); setCache('players', data || []); }
     } catch { if (!cached) toast.error('Error de conexión'); }
     finally { setLoading(false); }
+  };
+
+  const fetchDT = async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, first_name, last_name, role, avatar_url, email')
+      .in('role', ['dt', 'admin']);
+    if (data) setDtProfiles(data as DTProfile[]);
   };
 
   const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -169,6 +187,37 @@ Sé honesto pero constructivo, orientado al desarrollo individual. Específico p
           <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
+        <>
+        {/* Cuerpo Técnico */}
+        {dtProfiles.length > 0 && (
+          <section className="mb-10">
+            <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+              <Shield size={14} className="text-green-500" /> Cuerpo Técnico
+            </h2>
+            <div className="flex flex-wrap gap-4">
+              {dtProfiles.map(dt => (
+                <div key={dt.id} className="flex items-center gap-4 bg-[#1a1a1a] border border-[#333] rounded-2xl px-5 py-4 min-w-[220px]">
+                  <div className="w-14 h-14 rounded-full bg-[#242424] overflow-hidden flex items-center justify-center flex-shrink-0 border-2 border-green-600/40">
+                    {dt.avatar_url
+                      ? <img src={dt.avatar_url} alt={dt.first_name} className="w-full h-full object-cover" />
+                      : <User size={28} className="text-gray-600" />
+                    }
+                  </div>
+                  <div>
+                    <p className="font-black text-base leading-tight">{dt.first_name} {dt.last_name}</p>
+                    <p className="text-green-500 text-xs font-bold uppercase tracking-wider mt-0.5">
+                      {dt.role === 'admin' ? 'Admin / DT' : 'Director Técnico'}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        <h2 className="text-sm font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+          <User size={14} className="text-green-500" /> Plantel
+        </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
           {players.map((player) => (
             <div
@@ -210,6 +259,7 @@ Sé honesto pero constructivo, orientado al desarrollo individual. Específico p
             </div>
           ))}
         </div>
+        </>
       )}
 
       {/* Player detail + analysis modal (admin/dt only) */}

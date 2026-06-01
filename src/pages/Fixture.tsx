@@ -4,23 +4,35 @@ import { getCache, setCache, clearCache } from '../lib/cache';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
-import { Calendar, MapPin, Trophy, Plus, Video, X, Link2 } from 'lucide-react';
+import { Calendar, MapPin, Trophy, Plus, Video, X, Link2, Youtube, Loader } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type VideoRow = { id: string; yt_id: string; title: string; date: string };
 type MatchVideoRow = { id: string; match_id: string; video_id: string; videos: VideoRow };
 
-const ytThumb = (ytId: string) =>
-  `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+const ytThumb = (ytId: string) => `https://img.youtube.com/vi/${ytId}/mqdefault.jpg`;
+
+function extractYtId(url: string): string | null {
+  const patterns = [
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&?#\s]+)/,
+    /youtube\.com\/shorts\/([^&?#\s]+)/,
+  ];
+  for (const p of patterns) {
+    const m = url.match(p);
+    if (m) return m[1];
+  }
+  return null;
+}
 
 const Fixture = () => {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const { role } = useAuth();
+  const canAdd = ['admin', 'dt', 'player'].includes(role ?? '');
   const isAdmin = role === 'admin' || role === 'dt';
 
-  // match_videos state
   const [matchVideos, setMatchVideos] = useState<Record<string, MatchVideoRow[]>>({});
   const [videoModalMatch, setVideoModalMatch] = useState<Match | null>(null);
   const [allVideos, setAllVideos] = useState<VideoRow[]>([]);
@@ -28,18 +40,13 @@ const Fixture = () => {
   const [addingVideo, setAddingVideo] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<Partial<Match>>({
-    rival: '',
-    cond: 'Local',
+    rival: '', cond: 'Local',
     date: new Date().toISOString().split('T')[0],
-    fase: '',
-    res: 'pending',
-    sets: '',
-    notes: ''
+    fase: '', res: 'pending', sets: '', notes: '',
   });
+  const [videoUrls, setVideoUrls] = useState('');
 
-  useEffect(() => {
-    fetchMatches();
-  }, []);
+  useEffect(() => { fetchMatches(); }, []);
 
   const fetchMatches = async () => {
     const cached = getCache<Match[]>('matches26');
@@ -66,13 +73,53 @@ const Fixture = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { error } = await supabase.from('matches26').insert([formData]);
-    if (error) toast.error('Error al guardar el partido');
-    else {
-      toast.success('Partido guardado correctamente');
+    setSaving(true);
+    try {
+      const { data: matchData, error: matchError } = await supabase
+        .from('matches26')
+        .insert([formData])
+        .select()
+        .single();
+      if (matchError) { toast.error('Error al guardar el partido'); return; }
+
+      const matchId = matchData.id;
+      const urls = videoUrls.split('\n').map(u => u.trim()).filter(Boolean);
+      const videoRows: { match_id: string; video_id: string }[] = [];
+
+      for (let i = 0; i < urls.length; i++) {
+        const ytId = extractYtId(urls[i]);
+        if (!ytId) { toast.error(`URL inválida: ${urls[i]}`); continue; }
+
+        const { data: videoData, error: videoError } = await supabase
+          .from('videos')
+          .insert([{
+            yt_id: ytId,
+            title: `vs ${formData.rival} – ${formData.date}${urls.length > 1 ? ` (Video ${i + 1})` : ''}`,
+            date: formData.date,
+            season: '2026',
+          }])
+          .select('id')
+          .single();
+
+        if (videoError) { toast.error(`Error al guardar video ${i + 1}`); continue; }
+        videoRows.push({ match_id: matchId, video_id: videoData.id });
+      }
+
+      if (videoRows.length > 0) {
+        const { error: mvError } = await supabase.from('match_videos').insert(videoRows);
+        if (mvError) toast.error('Error al vincular los videos al partido');
+        else toast.success(`Partido y ${videoRows.length} video${videoRows.length > 1 ? 's' : ''} guardados`);
+      } else {
+        toast.success('Partido guardado correctamente');
+      }
+
       setIsModalOpen(false);
+      setVideoUrls('');
+      setFormData({ rival: '', cond: 'Local', date: new Date().toISOString().split('T')[0], fase: '', res: 'pending', sets: '', notes: '' });
       clearCache('matches26');
       fetchMatches();
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -100,10 +147,8 @@ const Fixture = () => {
       const video = allVideos.find(v => v.id === videoId)!;
       setMatchVideos(prev => ({
         ...prev,
-        [videoModalMatch.id]: [
-          ...(prev[videoModalMatch.id] || []),
-          { id: crypto.randomUUID(), match_id: videoModalMatch.id, video_id: videoId, videos: video },
-        ],
+        [videoModalMatch.id]: [...(prev[videoModalMatch.id] || []),
+          { id: crypto.randomUUID(), match_id: videoModalMatch.id, video_id: videoId, videos: video }],
       }));
     }
     setAddingVideo(null);
@@ -130,11 +175,9 @@ const Fixture = () => {
           <h1 className="text-3xl font-black">Fixture <span className="text-green-500">2026</span></h1>
           <p className="text-gray-400">Calendario de partidos y resultados</p>
         </div>
-        {isAdmin && (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg text-xs font-black flex items-center gap-2 transition-all"
-          >
+        {canAdd && (
+          <button onClick={() => setIsModalOpen(true)}
+            className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg text-xs font-black flex items-center gap-2 transition-all">
             <Plus size={16} /> Nuevo Partido
           </button>
         )}
@@ -142,14 +185,15 @@ const Fixture = () => {
 
       {loading ? (
         <div className="flex justify-center py-20">
-          <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
         <div className="grid gap-4">
           {matches.map((match) => {
             const videos = matchVideos[match.id] || [];
             return (
-              <div key={match.id} className="bg-[#1a1a1a] border border-[#333] rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div key={match.id}
+                className="bg-[#1a1a1a] border border-[#333] rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-4 flex-1 min-w-0">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold shrink-0 ${
                     match.res === 'win' ? 'bg-green-900/30 text-green-400' :
@@ -160,27 +204,21 @@ const Fixture = () => {
                   <div className="min-w-0">
                     <h3 className="font-bold text-lg">vs {match.rival}</h3>
                     <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400 mt-1">
-                      <span className="flex items-center gap-1"><Calendar size={12}/> {match.date}</span>
-                      <span className="flex items-center gap-1"><MapPin size={12}/> {match.cond}</span>
-                      <span className="flex items-center gap-1"><Trophy size={12}/> {match.fase}</span>
+                      <span className="flex items-center gap-1"><Calendar size={12} /> {match.date}</span>
+                      <span className="flex items-center gap-1"><MapPin size={12} /> {match.cond}</span>
+                      {match.fase && <span className="flex items-center gap-1"><Trophy size={12} /> {match.fase}</span>}
                     </div>
                     {videos.length > 0 && (
                       <div className="flex items-center gap-2 mt-3 flex-wrap">
                         {videos.slice(0, 4).map(mv => (
-                          <img
-                            key={mv.id}
-                            src={ytThumb(mv.videos.yt_id)}
-                            alt={mv.videos.title}
+                          <img key={mv.id} src={ytThumb(mv.videos.yt_id)} alt={mv.videos.title}
                             title={mv.videos.title}
                             className="w-20 h-14 object-cover rounded-md border border-[#333] cursor-pointer hover:border-purple-500 transition-colors"
-                            onClick={() => openVideoModal(match)}
-                          />
+                            onClick={() => openVideoModal(match)} />
                         ))}
                         {videos.length > 4 && (
-                          <button
-                            onClick={() => openVideoModal(match)}
-                            className="w-20 h-14 rounded-md border border-[#333] bg-[#242424] text-gray-400 text-xs font-bold hover:border-purple-700 transition-colors"
-                          >
+                          <button onClick={() => openVideoModal(match)}
+                            className="w-20 h-14 rounded-md border border-[#333] bg-[#242424] text-gray-400 text-xs font-bold hover:border-purple-700 transition-colors">
                             +{videos.length - 4} más
                           </button>
                         )}
@@ -189,14 +227,12 @@ const Fixture = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <button
-                    onClick={() => openVideoModal(match)}
+                  <button onClick={() => openVideoModal(match)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       videos.length > 0
                         ? 'bg-purple-900/40 text-purple-300 border border-purple-700/50 hover:bg-purple-900/60'
                         : 'bg-[#242424] text-gray-500 border border-[#333] hover:border-purple-700 hover:text-purple-400'
-                    }`}
-                  >
+                    }`}>
                     <Video size={12} />
                     {videos.length > 0 ? `${videos.length} video${videos.length !== 1 ? 's' : ''}` : 'Videos'}
                   </button>
@@ -211,48 +247,47 @@ const Fixture = () => {
         </div>
       )}
 
-      {/* New match modal */}
+      {/* Modal: Nuevo Partido */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Cargar Partido">
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Rival</label>
-            <input
-              type="text" required
+            <input type="text" required
               className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
               value={formData.rival}
-              onChange={e => setFormData({...formData, rival: e.target.value})}
-            />
+              onChange={e => setFormData({ ...formData, rival: e.target.value })} />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Fase / Categoría</label>
+            <input type="text" placeholder="ej: Fase de Ida – Categoría B"
+              className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
+              value={formData.fase}
+              onChange={e => setFormData({ ...formData, fase: e.target.value })} />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Condición</label>
-              <select
-                className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
+              <select className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
                 value={formData.cond}
-                onChange={e => setFormData({...formData, cond: e.target.value as any})}
-              >
+                onChange={e => setFormData({ ...formData, cond: e.target.value as any })}>
                 <option value="Local">Local</option>
                 <option value="Visitante">Visitante</option>
               </select>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Fecha</label>
-              <input
-                type="date" required
+              <input type="date" required
                 className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
                 value={formData.date}
-                onChange={e => setFormData({...formData, date: e.target.value})}
-              />
+                onChange={e => setFormData({ ...formData, date: e.target.value })} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Resultado</label>
-              <select
-                className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
+              <select className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
                 value={formData.res}
-                onChange={e => setFormData({...formData, res: e.target.value as any})}
-              >
+                onChange={e => setFormData({ ...formData, res: e.target.value as any })}>
                 <option value="pending">Pendiente</option>
                 <option value="win">Victoria</option>
                 <option value="loss">Derrota</option>
@@ -260,33 +295,46 @@ const Fixture = () => {
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sets (ej: 3-1)</label>
-              <input
-                type="text"
+              <input type="text"
                 className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500"
                 value={formData.sets}
-                onChange={e => setFormData({...formData, sets: e.target.value})}
-              />
+                onChange={e => setFormData({ ...formData, sets: e.target.value })} />
             </div>
           </div>
-          <button type="submit" className="w-full bg-green-700 hover:bg-green-600 py-3 rounded-xl font-black text-sm transition-all mt-4">
-            Guardar Partido
+
+          {/* Video URLs */}
+          <div>
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1 flex items-center gap-1.5">
+              <Youtube size={12} className="text-red-400" /> Links de videos del partido
+            </label>
+            <textarea rows={4}
+              placeholder={"Pegá los links de YouTube, uno por línea:\nhttps://youtu.be/xxxxx\nhttps://youtu.be/yyyyy"}
+              className="w-full bg-[#242424] border border-[#333] rounded-lg p-2.5 text-sm outline-none focus:border-green-500 font-mono text-xs resize-none placeholder-gray-600"
+              value={videoUrls}
+              onChange={e => setVideoUrls(e.target.value)} />
+            {videoUrls.trim() && (
+              <p className="text-[10px] text-gray-600 mt-1">
+                {videoUrls.split('\n').filter(u => u.trim() && extractYtId(u.trim())).length} link{videoUrls.split('\n').filter(u => u.trim() && extractYtId(u.trim())).length !== 1 ? 's' : ''} válido{videoUrls.split('\n').filter(u => u.trim() && extractYtId(u.trim())).length !== 1 ? 's' : ''}
+              </p>
+            )}
+          </div>
+
+          <button type="submit" disabled={saving}
+            className="w-full bg-green-700 hover:bg-green-600 disabled:opacity-50 py-3 rounded-xl font-black text-sm transition-all mt-4 flex items-center justify-center gap-2">
+            {saving ? <><Loader size={16} className="animate-spin" /> Guardando...</> : 'Guardar Partido'}
           </button>
         </form>
       </Modal>
 
-      {/* Video manager modal */}
-      <Modal
-        isOpen={!!videoModalMatch}
-        onClose={closeVideoModal}
-        title={videoModalMatch ? `Videos · vs ${videoModalMatch.rival}` : 'Videos'}
-      >
+      {/* Modal: Gestión de videos por partido */}
+      <Modal isOpen={!!videoModalMatch} onClose={closeVideoModal}
+        title={videoModalMatch ? `Videos · vs ${videoModalMatch.rival}` : 'Videos'}>
         {loadingVideos ? (
           <div className="flex justify-center py-10">
-            <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Linked videos */}
             <div>
               <p className="text-xs font-bold text-gray-500 uppercase mb-3">Videos vinculados ({linkedVideos.length})</p>
               {linkedVideos.length === 0 ? (
@@ -295,21 +343,15 @@ const Fixture = () => {
                 <div className="space-y-2">
                   {linkedVideos.map(mv => (
                     <div key={mv.id} className="flex items-center gap-3 bg-[#242424] rounded-lg p-2 border border-[#333]">
-                      <img
-                        src={ytThumb(mv.videos.yt_id)}
-                        alt={mv.videos.title}
-                        className="w-20 h-14 object-cover rounded-md shrink-0"
-                      />
+                      <img src={ytThumb(mv.videos.yt_id)} alt={mv.videos.title}
+                        className="w-20 h-14 object-cover rounded-md shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold truncate">{mv.videos.title}</p>
                         <p className="text-xs text-gray-500">{mv.videos.date}</p>
                       </div>
                       {isAdmin && (
-                        <button
-                          onClick={() => handleUnlinkVideo(mv.id, videoModalMatch!.id)}
-                          className="shrink-0 p-1.5 rounded-lg bg-red-900/20 text-red-400 hover:bg-red-900/40 transition-colors"
-                          title="Desvincular"
-                        >
+                        <button onClick={() => handleUnlinkVideo(mv.id, videoModalMatch!.id)}
+                          className="shrink-0 p-1.5 rounded-lg bg-red-900/20 text-red-400 hover:bg-red-900/40 transition-colors">
                           <X size={14} />
                         </button>
                       )}
@@ -318,33 +360,24 @@ const Fixture = () => {
                 </div>
               )}
             </div>
-
-            {/* Add videos — admin/dt only */}
             {isAdmin && unlinkedVideos.length > 0 && (
               <div>
                 <p className="text-xs font-bold text-gray-500 uppercase mb-3">Agregar video</p>
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                   {unlinkedVideos.map(v => (
-                    <div key={v.id} className="flex items-center gap-3 bg-[#1a1a1a] rounded-lg p-2 border border-[#2a2a2a] hover:border-purple-700/50 transition-colors">
-                      <img
-                        src={ytThumb(v.yt_id)}
-                        alt={v.title}
-                        className="w-20 h-14 object-cover rounded-md shrink-0"
-                      />
+                    <div key={v.id}
+                      className="flex items-center gap-3 bg-[#1a1a1a] rounded-lg p-2 border border-[#2a2a2a] hover:border-purple-700/50 transition-colors">
+                      <img src={ytThumb(v.yt_id)} alt={v.title}
+                        className="w-20 h-14 object-cover rounded-md shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold truncate">{v.title}</p>
                         <p className="text-xs text-gray-500">{v.date}</p>
                       </div>
-                      <button
-                        onClick={() => handleLinkVideo(v.id)}
-                        disabled={addingVideo === v.id}
-                        className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-900/30 text-purple-300 text-xs font-bold border border-purple-700/50 hover:bg-purple-900/50 transition-colors disabled:opacity-50"
-                      >
-                        {addingVideo === v.id ? (
-                          <div className="w-3 h-3 border border-purple-400 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Link2 size={12} />
-                        )}
+                      <button onClick={() => handleLinkVideo(v.id)} disabled={addingVideo === v.id}
+                        className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg bg-purple-900/30 text-purple-300 text-xs font-bold border border-purple-700/50 hover:bg-purple-900/50 transition-colors disabled:opacity-50">
+                        {addingVideo === v.id
+                          ? <div className="w-3 h-3 border border-purple-400 border-t-transparent rounded-full animate-spin" />
+                          : <Link2 size={12} />}
                         Vincular
                       </button>
                     </div>
@@ -352,7 +385,6 @@ const Fixture = () => {
                 </div>
               </div>
             )}
-
             {isAdmin && unlinkedVideos.length === 0 && linkedVideos.length > 0 && (
               <p className="text-xs text-gray-600 italic text-center">Todos los videos ya están vinculados a este partido.</p>
             )}

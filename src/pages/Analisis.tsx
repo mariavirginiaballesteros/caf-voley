@@ -1,29 +1,72 @@
-import React, { useEffect, useState } from 'react';
-import { supabase, AnalysisItem, DTContext } from '../lib/supabase';
+import React, { useEffect, useState, useCallback } from 'react';
+import { supabase, AnalysisItem } from '../lib/supabase';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
-import { Brain, Target, AlertTriangle, Plus, Trash2, Trophy, CheckCircle2, Loader } from 'lucide-react';
+import { Brain, Target, AlertTriangle, Plus, Trash2, Trophy, CheckCircle2, Loader, Sparkles, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type Item = AnalysisItem & { status?: 'active' | 'conquered'; conquered_at?: string; conquest_note?: string };
+
+type TeamAnalysis = {
+  id: string;
+  content: string;
+  match_count: number;
+  last_match_date: string | null;
+  generated_at: string;
+};
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 const Analisis = () => {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [conqueringId, setConqueringId] = useState<string | null>(null);
+  const [teamAnalysis, setTeamAnalysis] = useState<TeamAnalysis | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [playedMatchCount, setPlayedMatchCount] = useState(0);
   const { role } = useAuth();
   const isAdmin = role === 'admin' || role === 'dt';
 
   const [formData, setFormData] = useState<Partial<AnalysisItem>>({ type: 'strength', text: '', detail: '' });
 
-  useEffect(() => { fetchData(); }, []);
-
-  const fetchData = async () => {
-    const { data } = await supabase.from('analysis_items').select('*').order('sort_order');
-    if (data) setItems(data);
+  const fetchData = useCallback(async () => {
+    const [itemsRes, taRes, matchesRes] = await Promise.all([
+      supabase.from('analysis_items').select('*').order('sort_order'),
+      supabase.from('team_analysis').select('*').limit(1).maybeSingle(),
+      supabase.from('matches26').select('res').in('res', ['win', 'loss']),
+    ]);
+    if (itemsRes.data) setItems(itemsRes.data);
+    if (taRes.data) setTeamAnalysis(taRes.data as TeamAnalysis);
+    const count = matchesRes.data?.length ?? 0;
+    setPlayedMatchCount(count);
     setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  const needsRegen = (() => {
+    if (!teamAnalysis) return playedMatchCount > 0;
+    const isStale = Date.now() - new Date(teamAnalysis.generated_at).getTime() > SEVEN_DAYS_MS;
+    const hasNewMatches = playedMatchCount > teamAnalysis.match_count;
+    return isStale || hasNewMatches;
+  })();
+
+  const generateTeamAnalysis = async () => {
+    setGenerating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-team-analysis', {});
+      if (error) throw error;
+      if (data?.analysis) {
+        toast.success('Análisis global generado');
+        fetchData();
+      }
+    } catch {
+      toast.error('Error al generar el análisis global');
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -73,6 +116,10 @@ const Analisis = () => {
   const strengths = active.filter(i => i.type === 'strength');
   const weaknesses = active.filter(i => i.type === 'weakness');
 
+  const generatedLabel = teamAnalysis
+    ? new Date(teamAnalysis.generated_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
+    : null;
+
   return (
     <Layout>
       <header className="flex justify-between items-end mb-8">
@@ -94,6 +141,63 @@ const Analisis = () => {
         </div>
       ) : (
         <div className="space-y-8">
+
+          {/* Análisis Global Flora IA */}
+          <div className="bg-gradient-to-br from-[#0f0f1a] to-[#141414] border border-purple-900/30 rounded-2xl overflow-hidden">
+            <div className="flex items-start justify-between gap-4 p-5 border-b border-purple-900/20">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Sparkles size={16} className="text-purple-400" />
+                  <h2 className="text-base font-black text-purple-300">Análisis Global Flora IA</h2>
+                  {needsRegen && (
+                    <span className="text-[9px] font-black bg-yellow-600/20 text-yellow-400 border border-yellow-700/30 px-2 py-0.5 rounded-full">
+                      {teamAnalysis ? 'Desactualizado' : 'Sin generar'}
+                    </span>
+                  )}
+                </div>
+                {generatedLabel && (
+                  <p className="text-[10px] text-gray-600">
+                    Generado el {generatedLabel} · {teamAnalysis?.match_count ?? 0} partido{(teamAnalysis?.match_count ?? 0) !== 1 ? 's' : ''} analizados
+                  </p>
+                )}
+              </div>
+              {isAdmin && (
+                <button onClick={generateTeamAnalysis} disabled={generating}
+                  className={`flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black transition-all disabled:opacity-50 ${
+                    needsRegen
+                      ? 'bg-purple-700 hover:bg-purple-600 text-white'
+                      : 'bg-[#1a1a1a] hover:bg-[#242424] border border-[#333] text-gray-400 hover:text-purple-400'
+                  }`}>
+                  {generating
+                    ? <><Loader size={14} className="animate-spin" /> Generando...</>
+                    : teamAnalysis
+                      ? <><RefreshCw size={14} /> Regenerar</>
+                      : <><Sparkles size={14} /> Generar</>}
+                </button>
+              )}
+            </div>
+
+            {teamAnalysis ? (
+              <div className="p-5">
+                <div className="text-sm text-gray-200 leading-relaxed whitespace-pre-line">
+                  {teamAnalysis.content}
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center">
+                <Brain size={36} className="text-gray-700 mx-auto mb-3" />
+                <p className="text-gray-500 text-sm">
+                  {isAdmin
+                    ? 'Generá el análisis global del equipo para obtener una visión táctica integral de la temporada.'
+                    : 'El análisis global aún no fue generado.'}
+                </p>
+                {isAdmin && playedMatchCount === 0 && (
+                  <p className="text-gray-600 text-xs mt-2">Necesitás al menos un partido jugado para generar el análisis.</p>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Activos */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-[#1a1a1a] border border-[#333] rounded-2xl p-6">
