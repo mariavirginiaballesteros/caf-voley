@@ -135,7 +135,7 @@ const Fixture = () => {
   const closeVideoModal = () => setVideoModalMatch(null);
 
   const linkedVideoIds = videoModalMatch
-    ? new Set((matchVideos[videoModalMatch.id] || []).map(mv => mv.video_id))
+    ? new Set((matchVideos[videoModalMatch.id!] || []).map((mv: MatchVideoRow) => mv.video_id))
     : new Set<string>();
 
   const handleLinkVideo = async (videoId: string) => {
@@ -147,8 +147,8 @@ const Fixture = () => {
       const video = allVideos.find(v => v.id === videoId)!;
       setMatchVideos(prev => ({
         ...prev,
-        [videoModalMatch.id]: [...(prev[videoModalMatch.id] || []),
-          { id: crypto.randomUUID(), match_id: videoModalMatch.id, video_id: videoId, videos: video }],
+        [videoModalMatch.id!]: [...(prev[videoModalMatch.id!] || []),
+          { id: crypto.randomUUID(), match_id: videoModalMatch.id!, video_id: videoId, videos: video }],
       }));
     }
     setAddingVideo(null);
@@ -165,7 +165,7 @@ const Fixture = () => {
     }
   };
 
-  const linkedVideos = videoModalMatch ? (matchVideos[videoModalMatch.id] || []) : [];
+  const linkedVideos = videoModalMatch ? (matchVideos[videoModalMatch.id!] || []) : [];
   const unlinkedVideos = allVideos.filter(v => !linkedVideoIds.has(v.id));
 
   return (
@@ -190,7 +190,7 @@ const Fixture = () => {
       ) : (
         <div className="grid gap-4">
           {matches.map((match) => {
-            const videos = matchVideos[match.id] || [];
+            const videos = matchVideos[match.id!] || [];
             return (
               <div key={match.id}
                 className="bg-[#1a1a1a] border border-[#333] rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -210,7 +210,7 @@ const Fixture = () => {
                     </div>
                     {videos.length > 0 && (
                       <div className="flex items-center gap-2 mt-3 flex-wrap">
-                        {videos.slice(0, 4).map(mv => (
+                        {videos.slice(0, 4).map((mv: MatchVideoRow) => (
                           <img key={mv.id} src={ytThumb(mv.videos.yt_id)} alt={mv.videos.title}
                             title={mv.videos.title}
                             className="w-20 h-14 object-cover rounded-md border border-[#333] cursor-pointer hover:border-purple-500 transition-colors"
@@ -341,7 +341,7 @@ const Fixture = () => {
                 <p className="text-sm text-gray-600 italic">Ningún video vinculado todavía.</p>
               ) : (
                 <div className="space-y-2">
-                  {linkedVideos.map(mv => (
+                  {linkedVideos.map((mv: MatchVideoRow) => (
                     <div key={mv.id} className="flex items-center gap-3 bg-[#242424] rounded-lg p-2 border border-[#333]">
                       <img src={ytThumb(mv.videos.yt_id)} alt={mv.videos.title}
                         className="w-20 h-14 object-cover rounded-md shrink-0" />
@@ -350,7 +350,7 @@ const Fixture = () => {
                         <p className="text-xs text-gray-500">{mv.videos.date}</p>
                       </div>
                       {isAdmin && (
-                        <button onClick={() => handleUnlinkVideo(mv.id, videoModalMatch!.id)}
+                        <button onClick={() => handleUnlinkVideo(mv.id, videoModalMatch!.id!)}
                           className="shrink-0 p-1.5 rounded-lg bg-red-900/20 text-red-400 hover:bg-red-900/40 transition-colors">
                           <X size={14} />
                         </button>

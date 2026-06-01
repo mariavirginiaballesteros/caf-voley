@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase, Profile } from '../lib/supabase';
 import Layout from '../components/Layout';
