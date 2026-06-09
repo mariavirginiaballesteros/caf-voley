@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import {
   RefreshCw, Brain, AlertCircle, CheckCircle, Loader,
-  Target, Zap, Shield, ChevronRight, Layers, LayoutGrid,
+  Target, Zap, Shield, ChevronRight, Layers, LayoutGrid, ArrowLeft,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -406,6 +407,12 @@ const Pizarra = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-[11px] text-gray-600 hover:text-green-400 transition-colors mb-2"
+          >
+            <ArrowLeft size={12} /> Volver al menú
+          </Link>
           <div className="flex items-center gap-3 mb-1">
             <LayoutGrid size={22} className="text-green-500" />
             <h1 className="text-2xl font-black text-white">Pizarra Táctica</h1>
