@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { Brain, Target, AlertTriangle, Trophy, Zap, ClipboardList, Users, RefreshCw, ChevronRight, Sparkles } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -8,6 +9,7 @@ type AnalysisItem = { id: string; type: string; text: string; detail: string; st
 type Standing = { pos: number; name: string; pj: number; pg: number; pp: number; pts: number; is_caf: boolean };
 type Match = { rival: string; res: string; sets: string; date: string };
 type ScoutRival = { rival: string };
+type TeamAnalysis = { id: string; content: string; match_count: number; generated_at: string };
 
 type GeneratedContent = { title: string; content: string };
 
@@ -15,11 +17,13 @@ const TABS = ['equipo', 'prepartido', 'entrenamiento'] as const;
 type Tab = typeof TABS[number];
 
 const AICoach = () => {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('equipo');
   const [analysis, setAnalysis] = useState<AnalysisItem[]>([]);
   const [standings, setStandings] = useState<Standing[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [rivals, setRivals] = useState<string[]>([]);
+  const [teamAnalysis, setTeamAnalysis] = useState<TeamAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Pre-partido
@@ -36,11 +40,12 @@ const AICoach = () => {
   useEffect(() => { fetchData(); }, []);
 
   const fetchData = async () => {
-    const [aRes, sRes, mRes, rRes] = await Promise.all([
+    const [aRes, sRes, mRes, rRes, taRes] = await Promise.all([
       supabase.from('analysis_items').select('*').order('sort_order'),
       supabase.from('standings').select('*').eq('season', '2026').order('pos'),
       supabase.from('matches26').select('rival, res, sets, date').order('date', { ascending: false }).limit(8),
       supabase.from('rival_scouting').select('rival').order('rival'),
+      supabase.from('team_analysis').select('*').order('generated_at', { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (aRes.data) setAnalysis(aRes.data);
     if (sRes.data) setStandings(sRes.data);
@@ -49,6 +54,7 @@ const AICoach = () => {
       const unique = [...new Set((rRes.data as ScoutRival[]).map(r => r.rival))];
       setRivals(unique);
     }
+    if (taRes.data) setTeamAnalysis(taRes.data as TeamAnalysis);
     setLoading(false);
   };
 
@@ -56,7 +62,14 @@ const AICoach = () => {
     const { data, error } = await supabase.functions.invoke('ai-coach', {
       body: { message: prompt, history: [] }
     });
-    if (error) throw error;
+    if (error) {
+      let msg = 'Error en el servidor de IA';
+      try {
+        const body = await (error as any).context?.json?.();
+        if (body?.error) msg = body.error;
+      } catch { /* ignore parse errors */ }
+      throw new Error(msg);
+    }
     return data?.response || '';
   };
 
@@ -106,8 +119,9 @@ ALERTA TÁCTICA
 
       const response = await callFlora(prompt);
       setGenerated({ title: `Ficha táctica vs ${rival}`, content: response });
-    } catch (e) {
-      toast.error('Error al generar la ficha. Revisá la conexión.');
+    } catch (e: any) {
+      console.error('Flora pre-partido error:', e);
+      toast.error(e?.message || 'Error al generar la ficha. Revisá la conexión.');
     } finally {
       setGenerating(false);
     }
@@ -157,8 +171,9 @@ INDICADORES DE PROGRESO
 
       const response = await callFlora(prompt);
       setPlan({ title: `Plan semanal — ${planFocus}`, content: response });
-    } catch (e) {
-      toast.error('Error al generar el plan. Revisá la conexión.');
+    } catch (e: any) {
+      console.error('Flora plan error:', e);
+      toast.error(e?.message || 'Error al generar el plan. Revisá la conexión.');
     } finally {
       setGeneratingPlan(false);
     }
@@ -223,54 +238,102 @@ INDICADORES DE PROGRESO
                 <StatCard label="Derrotas" value={String(losses)} color="text-red-400" sub="Partidos cargados" />
               </div>
 
-              {/* Fortalezas y Debilidades */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-[#141414] border border-[#222] rounded-2xl p-5">
-                  <h3 className="text-sm font-black flex items-center gap-2 text-green-400 mb-4">
-                    <Target size={16} /> Fortalezas actuales ({fortalezas.length})
+              {/* Análisis Global Flora IA */}
+              <div className="bg-[#141414] border border-[#222] rounded-2xl overflow-hidden">
+                <div className="px-5 py-4 border-b border-[#222] flex items-center justify-between">
+                  <h3 className="text-sm font-black flex items-center gap-2 text-green-400">
+                    <Sparkles size={15} /> Análisis global del equipo
                   </h3>
-                  {fortalezas.length === 0
-                    ? <p className="text-gray-600 text-sm text-center py-4">Cargá fortalezas en Análisis Táctico</p>
-                    : <div className="space-y-2">
-                        {fortalezas.map(f => (
-                          <div key={f.id} className="p-3 bg-green-900/10 border border-green-900/20 rounded-xl">
-                            <p className="text-sm font-bold text-green-400">{f.text}</p>
-                            {f.detail && <p className="text-xs text-gray-500 mt-0.5">{f.detail}</p>}
-                          </div>
-                        ))}
-                      </div>
-                  }
+                  <button
+                    onClick={() => navigate('/analisis')}
+                    className="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-green-400 flex items-center gap-1 transition-colors"
+                  >
+                    Pizarra táctica <ChevronRight size={12} />
+                  </button>
+                </div>
+                {teamAnalysis ? (
+                  <div className="p-5">
+                    <p className="text-sm text-gray-300 leading-relaxed line-clamp-4">
+                      {teamAnalysis.content.slice(0, 320)}{teamAnalysis.content.length > 320 ? '...' : ''}
+                    </p>
+                    <button
+                      onClick={() => navigate('/analisis')}
+                      className="mt-3 text-xs font-black text-green-400 hover:text-green-300 flex items-center gap-1 transition-colors"
+                    >
+                      Ver análisis completo <ChevronRight size={12} />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-5 text-center">
+                    <p className="text-gray-600 text-sm mb-3">Aún no hay análisis generado.</p>
+                    <button
+                      onClick={() => navigate('/analisis')}
+                      className="text-xs font-black text-green-400 hover:text-green-300 flex items-center gap-1 mx-auto transition-colors"
+                    >
+                      Ir a Pizarra Táctica para generar <ChevronRight size={12} />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Fortalezas y A mejorar — chips compactos */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-[#141414] border border-[#222] rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-black text-green-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <Target size={13} /> Fortalezas ({fortalezas.length})
+                    </h3>
+                    <button onClick={() => navigate('/analisis')} className="text-[10px] text-gray-600 hover:text-green-400 font-bold flex items-center gap-0.5 transition-colors">
+                      Administrar <ChevronRight size={10} />
+                    </button>
+                  </div>
+                  {fortalezas.length === 0 ? (
+                    <p className="text-gray-600 text-xs py-2">Sin datos cargados</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {fortalezas.map(f => (
+                        <span key={f.id} className="px-2.5 py-1 bg-green-900/20 border border-green-900/30 rounded-full text-xs font-bold text-green-400">
+                          {f.text}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                <div className="bg-[#141414] border border-[#222] rounded-2xl p-5">
-                  <h3 className="text-sm font-black flex items-center gap-2 text-red-400 mb-4">
-                    <AlertTriangle size={16} /> En trabajo ({debilidades.length})
-                  </h3>
-                  {debilidades.length === 0
-                    ? <p className="text-gray-600 text-sm text-center py-4">¡Sin puntos pendientes!</p>
-                    : <div className="space-y-2">
-                        {debilidades.map(d => (
-                          <div key={d.id} className="p-3 bg-red-900/10 border border-red-900/20 rounded-xl">
-                            <p className="text-sm font-bold text-red-400">{d.text}</p>
-                            {d.detail && <p className="text-xs text-gray-500 mt-0.5">{d.detail}</p>}
-                          </div>
-                        ))}
-                      </div>
-                  }
+                <div className="bg-[#141414] border border-[#222] rounded-2xl p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-black text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <AlertTriangle size={13} /> En trabajo ({debilidades.length})
+                    </h3>
+                    <button onClick={() => navigate('/analisis')} className="text-[10px] text-gray-600 hover:text-orange-400 font-bold flex items-center gap-0.5 transition-colors">
+                      Administrar <ChevronRight size={10} />
+                    </button>
+                  </div>
+                  {debilidades.length === 0 ? (
+                    <p className="text-gray-600 text-xs py-2">¡Sin puntos pendientes!</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {debilidades.map(d => (
+                        <span key={d.id} className="px-2.5 py-1 bg-orange-900/20 border border-orange-900/30 rounded-full text-xs font-bold text-orange-400">
+                          {d.text}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Conquistadas */}
+              {/* Conquistadas — chips */}
               {conquistadas.length > 0 && (
-                <div className="bg-[#141414] border border-yellow-900/30 rounded-2xl p-5">
-                  <h3 className="text-sm font-black flex items-center gap-2 text-yellow-500 mb-3">
-                    <Trophy size={16} /> Mejoras conquistadas ({conquistadas.length})
+                <div className="bg-[#141414] border border-yellow-900/20 rounded-2xl p-4">
+                  <h3 className="text-xs font-black text-yellow-500 uppercase tracking-wider flex items-center gap-1.5 mb-3">
+                    <Trophy size={13} /> Conquistadas ({conquistadas.length})
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {conquistadas.map(c => (
-                      <div key={c.id} className="p-3 bg-yellow-900/10 border border-yellow-900/20 rounded-xl">
-                        <p className="text-sm font-bold text-yellow-400">{c.text}</p>
-                      </div>
+                      <span key={c.id} className="px-2.5 py-1 bg-yellow-900/20 border border-yellow-900/30 rounded-full text-xs font-bold text-yellow-400">
+                        {c.text}
+                      </span>
                     ))}
                   </div>
                 </div>

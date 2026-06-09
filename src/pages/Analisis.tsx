@@ -57,13 +57,21 @@ const Analisis = () => {
     setGenerating(true);
     try {
       const { data, error } = await supabase.functions.invoke('generate-team-analysis', {});
-      if (error) throw error;
+      if (error) {
+        let msg = 'Error en el servidor de IA';
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.error) msg = body.error;
+        } catch { /* ignore */ }
+        throw new Error(msg);
+      }
       if (data?.analysis) {
         toast.success('Análisis global generado');
         fetchData();
       }
-    } catch {
-      toast.error('Error al generar el análisis global');
+    } catch (e: any) {
+      console.error('generate-team-analysis error:', e);
+      toast.error(e?.message || 'Error al generar el análisis global');
     } finally {
       setGenerating(false);
     }
@@ -87,19 +95,21 @@ const Analisis = () => {
     if (!item) return;
     setConqueringId(id);
     try {
-      const { data: aiData } = await supabase.functions.invoke('interpret-conquest', {
+      const { data: aiData, error: aiError } = await supabase.functions.invoke('interpret-conquest', {
         body: { item_text: item.text, item_detail: item.detail }
       });
+      if (aiError) console.warn('interpret-conquest falló, conquistando sin nota IA:', aiError);
       const conquest_note = aiData?.note ?? null;
       const { error } = await supabase.from('analysis_items').update({
         status: 'conquered',
         conquered_at: new Date().toISOString(),
         conquest_note,
       }).eq('id', id);
-      if (error) toast.error('Error');
-      else { toast.success('¡Mejora conquistada! 🏆'); fetchData(); }
-    } catch {
-      toast.error('Error al generar interpretación');
+      if (error) toast.error('Error al guardar');
+      else { toast.success('¡Mejora conquistada!'); fetchData(); }
+    } catch (e: any) {
+      console.error('conquer error:', e);
+      toast.error('Error al guardar la conquista');
     } finally {
       setConqueringId(null);
     }

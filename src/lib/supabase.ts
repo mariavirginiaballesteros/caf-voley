@@ -48,6 +48,7 @@ export type Player = {
   num: string;
   pos: string;
   notes: string;
+  biography?: string | null;
   photo: string | null;
   journal: any[];
   ai_analysis?: string | null;

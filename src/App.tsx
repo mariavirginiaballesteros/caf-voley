@@ -1,5 +1,5 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { useSessionTracker } from './lib/useSessionTracker';
@@ -16,6 +16,9 @@ import Scout from './pages/Scout';
 import MiPerfil from './pages/MiPerfil';
 import Login from './pages/Login';
 import History2025 from './pages/History2025';
+import ResetPassword from './pages/ResetPassword';
+import Diario from './pages/Diario';
+import Pizarra from './pages/Pizarra';
 import LoadingSpinner from './components/LoadingSpinner';
 
 const ProtectedRoute = ({ children, roles }: { children: React.ReactNode, roles?: string[] }) => {
@@ -29,12 +32,18 @@ const ProtectedRoute = ({ children, roles }: { children: React.ReactNode, roles?
 };
 
 function AppRoutes() {
-  const { user } = useAuth();
+  const { user, recovering } = useAuth();
+  const navigate = useNavigate();
   useSessionTracker(user?.id);
+
+  useEffect(() => {
+    if (recovering) navigate('/reset-password', { replace: true });
+  }, [recovering]);
 
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       
       <Route path="/" element={
         <ProtectedRoute>
@@ -105,6 +114,18 @@ function AppRoutes() {
       <Route path="/history-2025" element={
         <ProtectedRoute>
           <History2025 />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/diario" element={
+        <ProtectedRoute>
+          <Diario />
+        </ProtectedRoute>
+      } />
+
+      <Route path="/pizarra" element={
+        <ProtectedRoute>
+          <Pizarra />
         </ProtectedRoute>
       } />
 

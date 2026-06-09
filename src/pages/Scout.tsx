@@ -70,9 +70,14 @@ const Scout = () => {
         { id: 'analyzing' }
       );
       fetchData();
-    } catch (e) {
-      console.error(e);
-      toast.error('Error al analizar. Revisá que la edge function esté activa.', { id: 'analyzing' });
+    } catch (e: any) {
+      console.error('analyze-video error:', e);
+      let msg = 'Error al analizar. Revisá que la edge function esté activa.';
+      try {
+        const body = await (e as any).context?.json?.();
+        if (body?.error) msg = body.error;
+      } catch { /* ignore */ }
+      toast.error(msg, { id: 'analyzing' });
     } finally {
       setAnalyzing(null);
       setRivalName('');

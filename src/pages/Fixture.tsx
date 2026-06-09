@@ -30,7 +30,6 @@ const Fixture = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const { role } = useAuth();
-  const canAdd = ['admin', 'dt', 'player'].includes(role ?? '');
   const isAdmin = role === 'admin' || role === 'dt';
 
   const [matchVideos, setMatchVideos] = useState<Record<string, MatchVideoRow[]>>({});
@@ -175,7 +174,7 @@ const Fixture = () => {
           <h1 className="text-3xl font-black">Fixture <span className="text-green-500">2026</span></h1>
           <p className="text-gray-400">Calendario de partidos y resultados</p>
         </div>
-        {canAdd && (
+        {isAdmin && (
           <button onClick={() => setIsModalOpen(true)}
             className="bg-green-700 hover:bg-green-600 px-4 py-2 rounded-lg text-xs font-black flex items-center gap-2 transition-all">
             <Plus size={16} /> Nuevo Partido
@@ -191,9 +190,16 @@ const Fixture = () => {
         <div className="grid gap-4">
           {matches.map((match) => {
             const videos = matchVideos[match.id!] || [];
+            const isPending = match.res === 'pending' || !match.res;
             return (
               <div key={match.id}
-                className="bg-[#1a1a1a] border border-[#333] rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                className={`rounded-xl p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
+                  isPending
+                    ? 'bg-[#111] border border-dashed border-[#333]'
+                    : match.res === 'win'
+                    ? 'bg-[#1a1a1a] border border-green-900/30'
+                    : 'bg-[#1a1a1a] border border-red-900/20'
+                }`}>
                 <div className="flex items-center gap-4 flex-1 min-w-0">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold shrink-0 ${
                     match.res === 'win' ? 'bg-green-900/30 text-green-400' :
@@ -202,7 +208,12 @@ const Fixture = () => {
                     {match.res === 'win' ? 'V' : match.res === 'loss' ? 'D' : '-'}
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-bold text-lg">vs {match.rival}</h3>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-bold text-lg">vs {match.rival}</h3>
+                      {isPending && (
+                        <span className="text-[9px] font-black uppercase tracking-widest bg-blue-900/30 text-blue-400 border border-blue-800/40 px-2 py-0.5 rounded-full">Próximo</span>
+                      )}
+                    </div>
                     <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400 mt-1">
                       <span className="flex items-center gap-1"><Calendar size={12} /> {match.date}</span>
                       <span className="flex items-center gap-1"><MapPin size={12} /> {match.cond}</span>

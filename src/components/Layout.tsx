@@ -14,6 +14,8 @@ import {
   ListOrdered,
   Radar,
   CircleUser,
+  BookOpen,
+  LayoutGrid,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -55,14 +57,10 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       label: "PRINCIPAL",
       items: [
         { icon: <LayoutDashboard size={18} />, label: "Dashboard", path: "/", roles: ['admin', 'dt', 'player'] },
-        { icon: <Trophy size={18} />, label: "Gestión de Torneos", path: "/torneos", roles: ['admin', 'dt', 'player'] },
-      ]
-    },
-    {
-      label: "TEMPORADA 2026",
-      items: [
-        { icon: <Calendar size={18} />, label: "Fixture 2026", path: "/fixture", roles: ['admin', 'dt', 'player'], badge: fixtureCount },
-        { icon: <ListOrdered size={18} />, label: "Tabla de Posiciones", path: "/tabla", roles: ['admin', 'dt', 'player'] },
+        { icon: <Users size={18} />, label: "Plantel", path: "/plantel", roles: ['admin', 'dt', 'player'], badge: playersCount },
+        { icon: <Brain size={18} />, label: "Panel Flora IA", path: "/ai-coach", roles: ['admin', 'dt', 'player'] },
+        { icon: <LayoutGrid size={18} />, label: "Pizarra Táctica", path: "/pizarra", roles: ['admin', 'dt', 'player'] },
+        { icon: <Radar size={18} />, label: "Scout Rivales", path: "/scout", roles: ['admin', 'dt', 'player'] },
       ]
     },
     {
@@ -70,15 +68,16 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       items: [
         { icon: <Video size={18} />, label: "Videos & Jugadas", path: "/videos", roles: ['admin', 'dt', 'player'], badge: videosCount },
         { icon: <Microscope size={18} />, label: "Análisis Táctico", path: "/analisis", roles: ['admin', 'dt', 'player'] },
-        { icon: <Radar size={18} />, label: "Scout Rivales", path: "/scout", roles: ['admin', 'dt', 'player'] },
+        { icon: <Calendar size={18} />, label: "Fixture 2026", path: "/fixture", roles: ['admin', 'dt', 'player'], badge: fixtureCount },
+        { icon: <ListOrdered size={18} />, label: "Tabla de Posiciones", path: "/tabla", roles: ['admin', 'dt', 'player'] },
       ]
     },
     {
       label: "COACHING",
       items: [
-        { icon: <Brain size={18} />, label: "Entrenadora IA", path: "/ai-coach", roles: ['admin', 'dt', 'player'] },
-        { icon: <Users size={18} />, label: "Plantel", path: "/plantel", roles: ['admin', 'dt', 'player'], badge: playersCount },
+        { icon: <BookOpen size={18} />, label: "Diario de partido", path: "/diario", roles: ['admin', 'dt', 'player'] },
         { icon: <CircleUser size={18} />, label: "Mi Perfil", path: "/mi-perfil", roles: ['admin', 'dt', 'player'] },
+        { icon: <Trophy size={18} />, label: "Gestión de Torneos", path: "/torneos", roles: ['admin', 'dt', 'player'] },
       ]
     },
     {
@@ -109,7 +108,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       <aside className="w-64 bg-[#0d0d0d] border-r border-[#1e1e1e] fixed h-full hidden md:flex flex-col z-50">
         <div className="p-6 border-b border-[#1e1e1e]">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-green-800 rounded-lg flex items-center justify-center font-bold text-yellow-500 shadow-lg border border-green-700">CAF</div>
+            <img src="/logo.png" alt="CAF Funes" className="w-10 h-10 rounded-lg object-contain" />
             <div>
               <h2 className="text-sm font-black leading-tight">Funes C</h2>
               <p className="text-[10px] text-green-500 font-medium">Maxi Vóley Femenino</p>

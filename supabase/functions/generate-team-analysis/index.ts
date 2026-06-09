@@ -95,17 +95,17 @@ Generá un análisis global del equipo que incluya:
 
 Sé específico, orientado a la acción, tono profesional pero directo. Hablá en términos de vóley femenino categoría B Argentina. Estructura con títulos claros en negrita. Máximo 500 palabras.`;
 
-    const anthropic = new Anthropic({ apiKey: Deno.env.get('ANTHROPIC_API_KEY')! });
-    const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+    const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY no configurada en los secrets de Supabase');
+
+    const client = new Anthropic({ apiKey });
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const contentBlock = message.content[0];
-    if (contentBlock.type !== 'text') throw new Error('Respuesta inesperada del modelo');
-    const analysisText = contentBlock.text;
-
+    const analysisText = response.content[0].type === 'text' ? response.content[0].text : '';
     const lastMatchDate = playedMatches[0]?.date ?? null;
 
     const { data: existing } = await supabase
