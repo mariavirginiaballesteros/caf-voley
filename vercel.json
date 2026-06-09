@@ -1,4 +1,6 @@
 {
+  "framework": "vite",
+  "buildCommand": "pnpm run build",
   "rewrites": [
     { "source": "/login", "destination": "/login.html" },
     { "source": "/((?!login\\.html$).*)", "destination": "/index.html" }
