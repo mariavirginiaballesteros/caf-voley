@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
-import { Trophy, TrendingUp, Minus, TrendingDown, Edit2, Check, X, ExternalLink, Plus, Trash2, RefreshCw, Save } from 'lucide-react';
+import { Trophy, TrendingUp, Minus, TrendingDown, Edit2, Check, X, ExternalLink, Plus, Trash2, RefreshCw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { getCache, setCache, clearCache } from '../lib/cache';
 import { useAuth } from '../context/AuthContext';
@@ -39,10 +39,8 @@ const Standings = () => {
   const [editData, setEditData] = useState<Partial<Team>>({});
   const [addModal, setAddModal] = useState(false);
   const [newTeam, setNewTeam] = useState<Omit<Team, 'id'>>(BLANK_TEAM);
-  // Bulk edit mode
-  const [bulkMode, setBulkMode] = useState(false);
-  const [bulkData, setBulkData] = useState<Record<string, Partial<Team>>>({});
-  const [saving, setSaving] = useState(false);
+  const [showCopa, setShowCopa] = useState(false);
+  const [iframeLoading, setIframeLoading] = useState(true);
   const { role } = useAuth();
   const isAdmin = role === 'admin' || role === 'dt';
 
@@ -89,54 +87,6 @@ const Standings = () => {
     }
   };
 
-  // Open Copa Fácil + activate bulk edit mode
-  const handleActualizar = () => {
-    window.open(COPAFACIL_URL, '_blank', 'noreferrer');
-    if (isAdmin) {
-      // Init bulk data from current teams
-      const init: Record<string, Partial<Team>> = {};
-      teams.forEach(t => {
-        init[t.id] = { pts: t.pts, pj: t.pj, pg: t.pg, pp: t.pp, sets_favor: t.sets_favor, pos: t.pos, trend: t.trend };
-      });
-      setBulkData(init);
-      setBulkMode(true);
-      setEditingId(null);
-    }
-  };
-
-  const setBulkField = (id: string, field: keyof Team, value: number | string) => {
-    setBulkData(prev => ({ ...prev, [id]: { ...prev[id], [field]: typeof value === 'string' ? value : +value } }));
-  };
-
-  const saveBulk = async () => {
-    setSaving(true);
-    try {
-      const updates = Object.entries(bulkData).map(([id, data]) =>
-        supabase.from('standings').update(data).eq('id', id)
-      );
-      const results = await Promise.all(updates);
-      const errors = results.filter(r => r.error);
-      if (errors.length > 0) {
-        toast.error(`${errors.length} error(es) al guardar`);
-      } else {
-        toast.success('✅ Tabla actualizada completa');
-        setBulkMode(false);
-        setBulkData({});
-        clearCache('standings');
-        fetchStandings();
-      }
-    } catch {
-      toast.error('Error inesperado');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const cancelBulk = () => {
-    setBulkMode(false);
-    setBulkData({});
-  };
-
   const caf = teams.find(t => t.is_caf);
 
   return (
@@ -148,51 +98,69 @@ const Standings = () => {
           <p className="text-gray-500 text-xs mt-0.5">Temporada 2026 · Cat. B Maxi Femenino · Liga Todo Vóley</p>
         </div>
         <div className="flex items-center gap-2">
-          {bulkMode ? (
-            <>
-              <button
-                onClick={cancelBulk}
-                className="flex items-center gap-1.5 px-3 py-2 bg-[#111] border border-[#2a2a2a] hover:border-red-700/50 rounded-lg text-[11px] font-bold text-gray-400 hover:text-red-400 transition-all"
-              >
-                <X size={12} /> Cancelar
-              </button>
-              <button
-                onClick={saveBulk}
-                disabled={saving}
-                className="flex items-center gap-1.5 px-3 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 rounded-lg text-[11px] font-black transition-all"
-              >
-                {saving ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save size={12} />}
-                Guardar todo
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={handleActualizar}
-                className="flex items-center gap-1.5 px-3 py-2 bg-[#111] border border-[#2a2a2a] hover:border-green-700/50 rounded-lg text-[11px] font-bold text-gray-400 hover:text-green-400 transition-all"
-              >
-                <RefreshCw size={12} /> Actualizar datos
-              </button>
-              {isAdmin && (
-                <button
-                  onClick={() => setAddModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-green-700 hover:bg-green-600 rounded-lg text-[11px] font-black transition-all"
-                >
-                  <Plus size={13} /> Equipo
-                </button>
-              )}
-            </>
+          <button
+            onClick={() => { setShowCopa(v => !v); setIframeLoading(true); }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold transition-all border ${
+              showCopa
+                ? 'bg-green-700/20 border-green-700/50 text-green-400'
+                : 'bg-[#111] border-[#2a2a2a] hover:border-green-700/50 text-gray-400 hover:text-green-400'
+            }`}
+          >
+            <RefreshCw size={12} className={showCopa ? 'text-green-400' : ''} />
+            {showCopa ? 'Cerrar Copa Fácil' : 'Ver Copa Fácil'}
+          </button>
+          {isAdmin && (
+            <button
+              onClick={() => setAddModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-green-700 hover:bg-green-600 rounded-lg text-[11px] font-black transition-all"
+            >
+              <Plus size={13} /> Equipo
+            </button>
           )}
         </div>
       </div>
 
-      {/* Banner aviso edición masiva */}
-      {bulkMode && (
-        <div className="bg-yellow-950/30 border border-yellow-700/40 rounded-xl px-4 py-2.5 mb-4 flex items-center gap-2">
-          <ExternalLink size={13} className="text-yellow-500 flex-shrink-0" />
-          <p className="text-[11px] text-yellow-400 font-bold">
-            Copa Fácil se abrió en otra pestaña. Copiá los datos acá abajo y hacé clic en <span className="text-white font-black">Guardar todo</span>.
-          </p>
+      {/* Panel Copa Fácil embebido */}
+      {showCopa && (
+        <div className="mb-4 bg-[#0d0d0d] border border-[#2a2a2a] rounded-2xl overflow-hidden">
+          {/* Barra superior del recuadro */}
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#1e1e1e]">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-green-500/60" />
+              <span className="text-[11px] font-bold text-gray-400">Copa Fácil · Liga Todo Vóley 2026</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <a
+                href={COPAFACIL_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-[10px] text-gray-600 hover:text-green-400 transition-colors"
+              >
+                <ExternalLink size={10} /> Abrir en pestaña
+              </a>
+              <button onClick={() => setShowCopa(false)} className="text-gray-600 hover:text-gray-300 transition-colors ml-1">
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* iframe */}
+          <div className="relative" style={{ height: '520px' }}>
+            {iframeLoading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#0d0d0d] z-10">
+                <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+                <p className="text-xs text-gray-500">Cargando Copa Fácil...</p>
+              </div>
+            )}
+            <iframe
+              src={COPAFACIL_URL}
+              title="Copa Fácil"
+              className="w-full h-full border-0"
+              style={{ height: '520px' }}
+              onLoad={() => setIframeLoading(false)}
+              allow="clipboard-read; clipboard-write"
+            />
+          </div>
         </div>
       )}
 
@@ -232,7 +200,6 @@ const Standings = () => {
         <div className="bg-[#111] border border-[#1e1e1e] rounded-2xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              {/* Columnas */}
               <thead>
                 <tr className="border-b border-[#1a1a1a]">
                   <th className="px-3 py-2.5 text-[9px] uppercase tracking-widest text-gray-600 font-black w-10 text-center">#</th>
@@ -243,21 +210,20 @@ const Standings = () => {
                   <th className="px-3 py-2.5 text-[9px] uppercase tracking-widest text-gray-600 font-black text-center">SF</th>
                   <th className="px-3 py-2.5 text-[9px] uppercase tracking-widest text-green-500 font-black text-center">PTS</th>
                   <th className="px-3 py-2.5 text-[9px] uppercase tracking-widest text-gray-600 font-black text-center w-8"></th>
-                  {isAdmin && !bulkMode && <th className="px-2 py-2.5 w-16" />}
+                  {isAdmin && <th className="px-2 py-2.5 w-16" />}
                 </tr>
               </thead>
               <tbody>
                 {teams.map((team, idx) => {
-                  const editing = !bulkMode && editingId === team.id;
+                  const editing = editingId === team.id;
                   const isTop3 = team.pos <= 3;
                   const showDivider = idx > 0 && teams[idx - 1].pos <= 3 && !isTop3;
-                  const bd = bulkData[team.id] ?? {};
 
                   return (
                     <React.Fragment key={team.id}>
                       {showDivider && (
                         <tr>
-                          <td colSpan={isAdmin && !bulkMode ? 9 : 8} className="px-3 py-1 bg-[#0d0d0d]">
+                          <td colSpan={isAdmin ? 9 : 8} className="px-3 py-1 bg-[#0d0d0d]">
                             <p className="text-[8px] font-black uppercase tracking-widest text-yellow-700/50">— ascenso (top 3) —</p>
                           </td>
                         </tr>
@@ -267,25 +233,14 @@ const Standings = () => {
                           ? 'bg-green-950/20 border-l-2 border-l-green-600'
                           : isTop3
                           ? 'bg-yellow-950/10'
-                          : bulkMode ? '' : 'hover:bg-white/[0.02]'
-                      } ${bulkMode ? 'bg-[#0d0d0d]' : ''}`}>
-                        {/* Pos */}
+                          : 'hover:bg-white/[0.02]'
+                      }`}>
                         <td className="px-3 py-2.5 text-center">
-                          {bulkMode ? (
-                            <input
-                              type="number"
-                              value={bd.pos ?? team.pos}
-                              onChange={e => setBulkField(team.id, 'pos', e.target.value)}
-                              className="w-10 bg-[#1a1a1a] border border-[#333] rounded px-1 py-0.5 text-xs text-center outline-none focus:border-yellow-500 text-yellow-400 font-black"
-                            />
-                          ) : (
-                            <span className={`font-black text-sm ${isTop3 ? 'text-yellow-500' : 'text-gray-600'}`}>
-                              {team.pos}
-                            </span>
-                          )}
+                          <span className={`font-black text-sm ${isTop3 ? 'text-yellow-500' : 'text-gray-600'}`}>
+                            {team.pos}
+                          </span>
                         </td>
 
-                        {/* Nombre */}
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-2">
                             <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-black flex-shrink-0 ${
@@ -299,39 +254,7 @@ const Standings = () => {
                           </div>
                         </td>
 
-                        {bulkMode ? (
-                          <>
-                            {(['pj', 'pg', 'pp', 'sets_favor'] as const).map(field => (
-                              <td key={field} className="px-2 py-2 text-center">
-                                <input
-                                  type="number"
-                                  value={bd[field] ?? team[field]}
-                                  onChange={e => setBulkField(team.id, field, e.target.value)}
-                                  className="w-11 bg-[#1a1a1a] border border-[#2a2a2a] rounded px-1 py-1 text-xs text-center outline-none focus:border-green-500 text-gray-300"
-                                />
-                              </td>
-                            ))}
-                            <td className="px-2 py-2 text-center">
-                              <input
-                                type="number"
-                                value={bd.pts ?? team.pts}
-                                onChange={e => setBulkField(team.id, 'pts', e.target.value)}
-                                className="w-11 bg-green-900/20 border border-green-700/40 rounded px-1 py-1 text-xs text-center outline-none focus:border-green-500 text-green-400 font-black"
-                              />
-                            </td>
-                            <td className="px-2 py-2 text-center">
-                              <select
-                                value={bd.trend ?? team.trend}
-                                onChange={e => setBulkField(team.id, 'trend', e.target.value)}
-                                className="bg-[#1a1a1a] border border-[#2a2a2a] rounded px-1 py-1 text-xs outline-none focus:border-green-500 text-gray-300"
-                              >
-                                <option value="up">↑</option>
-                                <option value="neutral">→</option>
-                                <option value="down">↓</option>
-                              </select>
-                            </td>
-                          </>
-                        ) : editing ? (
+                        {editing ? (
                           <>
                             {(['pj', 'pg', 'pp', 'sets_favor'] as const).map(field => (
                               <td key={field} className="px-2 py-2 text-center">
@@ -408,42 +331,21 @@ const Standings = () => {
               </tbody>
             </table>
           </div>
-
-          {/* Bulk mode footer */}
-          {bulkMode && (
-            <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[#1e1e1e] bg-[#0d0d0d]">
-              <button onClick={cancelBulk} className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-gray-300 transition-colors">
-                Cancelar
-              </button>
-              <button
-                onClick={saveBulk}
-                disabled={saving}
-                className="flex items-center gap-1.5 px-4 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 rounded-lg text-xs font-black transition-all"
-              >
-                {saving
-                  ? <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Guardando...</>
-                  : <><Save size={12} /> Guardar todo ({teams.length} equipos)</>
-                }
-              </button>
-            </div>
-          )}
         </div>
       )}
 
       {/* Footer link */}
-      {!bulkMode && (
-        <div className="flex items-center justify-center mt-3">
-          <a
-            href={COPAFACIL_URL}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 text-[10px] text-gray-700 hover:text-green-500 transition-colors"
-          >
-            <ExternalLink size={10} />
-            Datos en tiempo real → Copa Fácil · Femenino C
-          </a>
-        </div>
-      )}
+      <div className="flex items-center justify-center mt-3">
+        <a
+          href={COPAFACIL_URL}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-1.5 text-[10px] text-gray-700 hover:text-green-500 transition-colors"
+        >
+          <ExternalLink size={10} />
+          Datos en tiempo real → Copa Fácil · Femenino C
+        </a>
+      </div>
 
       {/* Modal agregar equipo */}
       <Modal isOpen={addModal} onClose={() => setAddModal(false)} title="Agregar Equipo">
