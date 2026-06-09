@@ -6,7 +6,7 @@ import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
 import {
   Calendar, MapPin, Trophy, Plus, Video, X, Link2, Youtube,
-  Loader, BarChart2, ChevronDown, ChevronUp, Save,
+  Loader, BarChart2, ChevronDown, ChevronUp, Save, Sparkles, FileText,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -79,6 +79,11 @@ const Fixture = () => {
   const [loadingStats, setLoadingStats] = useState(false);
   const [savingStats, setSavingStats] = useState(false);
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
+
+  // Flora text-to-stats
+  const [showFloraInput, setShowFloraInput] = useState(false);
+  const [floraText, setFloraText] = useState('');
+  const [parsingFlora, setParsingFlora] = useState(false);
 
   const [formData, setFormData] = useState<Partial<Match>>({
     rival: '', cond: 'Local',
@@ -208,7 +213,54 @@ const Fixture = () => {
     if (loadedPlayers.length > 0) setExpandedPlayer(loadedPlayers[0].id!);
   }, []);
 
-  const closeStatsModal = () => { setStatsMatch(null); setStatsForm({}); setExistingStats({}); };
+  const closeStatsModal = () => {
+    setStatsMatch(null); setStatsForm({}); setExistingStats({});
+    setShowFloraInput(false); setFloraText('');
+  };
+
+  const parseWithFlora = async () => {
+    if (!floraText.trim() || !players.length) return;
+    setParsingFlora(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('parse-match-stats', {
+        body: {
+          text: floraText,
+          players: players.map(p => ({ id: p.id, name: p.name, num: p.num, pos: p.pos })),
+        },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const parsedStats: Array<Partial<PlayerMatchStats> & { player_id: string }> = data.stats || [];
+      if (parsedStats.length === 0) {
+        toast('Flora no encontró datos en el texto. Revisá la redacción.', { icon: '🤔' });
+        return;
+      }
+
+      // Merge parsed stats into the form
+      setStatsForm(prev => {
+        const next = { ...prev };
+        for (const ps of parsedStats) {
+          if (next[ps.player_id]) {
+            next[ps.player_id] = { ...next[ps.player_id], ...ps };
+          }
+        }
+        return next;
+      });
+
+      // Auto-expand first player that got data
+      const firstWithData = parsedStats[0]?.player_id;
+      if (firstWithData) setExpandedPlayer(firstWithData);
+
+      setShowFloraInput(false);
+      setFloraText('');
+      toast.success(`Flora completó stats para ${parsedStats.length} jugadora${parsedStats.length !== 1 ? 's' : ''}. Revisá y guardá.`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Error al procesar con Flora');
+    } finally {
+      setParsingFlora(false);
+    }
+  };
 
   const updateStat = (playerId: string, field: keyof PlayerMatchStats, value: number) => {
     setStatsForm(prev => ({
@@ -549,6 +601,52 @@ const Fixture = () => {
         ) : (
           <div className="space-y-3">
             <p className="text-[11px] text-gray-500">Ingresá las estadísticas por jugadora. Solo se guardan las que tienen al menos un dato cargado.</p>
+
+            {/* Flora text-to-stats panel */}
+            <div className="rounded-xl border border-green-900/40 bg-[#0a150a] overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowFloraInput(v => !v)}
+                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-green-950/30 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Sparkles size={13} className="text-green-400" />
+                  <span className="text-[12px] font-bold text-green-300">Flora · Completar stats con texto</span>
+                  <span className="text-[10px] text-green-700 bg-green-950 px-1.5 py-0.5 rounded">IA</span>
+                </div>
+                {showFloraInput
+                  ? <ChevronUp size={14} className="text-green-600" />
+                  : <ChevronDown size={14} className="text-green-600" />
+                }
+              </button>
+
+              {showFloraInput && (
+                <div className="px-3 pb-3 space-y-2.5 border-t border-green-900/30">
+                  <p className="text-[10px] text-green-700 pt-2 leading-relaxed">
+                    Describí el partido libremente y Flora completará las stats automáticamente.<br />
+                    <span className="text-green-800">Ej: "Caro 4 saques, 2 punto y 1 error. Joce 8 remates, 3 punto. #7 recibió 5 veces, 3 perfectas…"</span>
+                  </p>
+                  <textarea
+                    value={floraText}
+                    onChange={e => setFloraText(e.target.value)}
+                    placeholder="Escribí el resumen del partido..."
+                    rows={4}
+                    className="w-full bg-[#0d1f0d] border border-green-900/50 rounded-lg px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-green-600 resize-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={parseWithFlora}
+                    disabled={parsingFlora || !floraText.trim()}
+                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed text-[12px] font-bold text-white transition-colors"
+                  >
+                    {parsingFlora
+                      ? <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Analizando...</>
+                      : <><Sparkles size={13} />Flora · Analizar texto</>
+                    }
+                  </button>
+                </div>
+              )}
+            </div>
 
             <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
               {players.map(player => {
