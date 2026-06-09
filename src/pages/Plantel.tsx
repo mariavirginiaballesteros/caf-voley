@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { supabase, Player } from '../lib/supabase';
+import { supabase, Player, PlayerMatchStats, PlayerAnalysis } from '../lib/supabase';
 import { getCache, setCache, clearCache } from '../lib/cache';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
-import { User, Plus, Trash2, Upload, Sparkles, Loader, Brain, Share2, Lock, X, Mail, CheckCircle, Shield, Edit2, FileText, Save } from 'lucide-react';
+import { User, Plus, Trash2, Upload, Sparkles, Loader, Brain, Share2, Lock, X, Mail, CheckCircle, Shield, Edit2, FileText, Save, BarChart2, RefreshCw } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type DTProfile = {
@@ -26,6 +26,12 @@ const Plantel = () => {
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [modalEmail, setModalEmail] = useState('');
+
+  // Flora stats analysis
+  const [playerAnalysis, setPlayerAnalysis] = useState<PlayerAnalysis | null>(null);
+  const [playerStats, setPlayerStats] = useState<PlayerMatchStats[]>([]);
+  const [generatingStatsAnalysis, setGeneratingStatsAnalysis] = useState(false);
+  const [statsAnalysisError, setStatsAnalysisError] = useState<string | null>(null);
   const [creatingAccount, setCreatingAccount] = useState(false);
   const { role } = useAuth();
   const isAdmin = role === 'admin' || role === 'dt';
@@ -51,7 +57,22 @@ const Plantel = () => {
   const [bulkLoading, setBulkLoading] = useState(false);
 
   useEffect(() => { fetchPlayers(); fetchDT(); }, []);
-  useEffect(() => { setModalEmail(selectedPlayer?.email || ''); }, [selectedPlayer]);
+  useEffect(() => {
+    setModalEmail(selectedPlayer?.email || '');
+    if (selectedPlayer?.id) {
+      // Fetch existing flora stats analysis and stats count
+      setPlayerAnalysis(null);
+      setPlayerStats([]);
+      setStatsAnalysisError(null);
+      Promise.all([
+        supabase.from('player_analysis').select('*').eq('player_id', selectedPlayer.id).maybeSingle(),
+        supabase.from('player_match_stats').select('*').eq('player_id', selectedPlayer.id),
+      ]).then(([anaRes, statsRes]) => {
+        if (anaRes.data) setPlayerAnalysis(anaRes.data as PlayerAnalysis);
+        if (statsRes.data) setPlayerStats(statsRes.data as PlayerMatchStats[]);
+      });
+    }
+  }, [selectedPlayer?.id]);
 
   const fetchPlayers = async () => {
     const cached = getCache<Player[]>('players');
@@ -157,6 +178,38 @@ Sé honesto pero constructivo, orientado al desarrollo individual. Específico p
       toast.error(msg);
     } finally {
       setAnalyzingId(null);
+    }
+  };
+
+  const generatePlayerStatsAnalysis = async (player: Player) => {
+    if (!player.id) return;
+    setGeneratingStatsAnalysis(true);
+    setStatsAnalysisError(null);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-player-analysis', {
+        body: { player_id: player.id }
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      const newAnalysis: PlayerAnalysis = {
+        player_id: player.id,
+        content: data.analysis,
+        match_count: data.match_count,
+        generated_at: new Date().toISOString(),
+      };
+      setPlayerAnalysis(newAnalysis);
+      toast.success('Análisis de estadísticas generado por Flora');
+    } catch (e: any) {
+      let msg = 'Error al generar el análisis';
+      try {
+        const body = await e?.context?.json?.();
+        if (body?.error) msg = body.error;
+      } catch { /* ignore */ }
+      if (e?.message) msg = e.message;
+      setStatsAnalysisError(msg);
+      toast.error(msg);
+    } finally {
+      setGeneratingStatsAnalysis(false);
     }
   };
 
@@ -583,6 +636,77 @@ Sé honesto pero constructivo, orientado al desarrollo individual. Específico p
                       </p>
                     )}
                   </div>}
+
+                  {/* Flora Stats Analysis — admin only */}
+                  {isAdmin && (
+                    <div className="bg-[#111] border border-[#222] rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <BarChart2 size={13} className="text-green-400" />
+                          <span className="text-xs font-black text-green-400 uppercase tracking-widest">Flora · Análisis por Estadísticas</span>
+                          {playerStats.length > 0 && (
+                            <span className="text-[9px] font-black bg-green-900/30 text-green-400 border border-green-800/40 px-1.5 py-0.5 rounded-full">
+                              {playerStats.length} partido{playerStats.length !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => generatePlayerStatsAnalysis(selectedPlayer!)}
+                          disabled={generatingStatsAnalysis || playerStats.length === 0}
+                          title={playerStats.length === 0 ? 'Cargá estadísticas del partido primero' : ''}
+                          className="flex items-center gap-1.5 text-[10px] font-black bg-green-900/30 hover:bg-green-900/50 border border-green-800/40 text-green-400 px-3 py-1.5 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {generatingStatsAnalysis
+                            ? <><Loader size={11} className="animate-spin" /> Analizando...</>
+                            : playerAnalysis
+                              ? <><RefreshCw size={11} /> Re-generar</>
+                              : <><Sparkles size={11} /> Generar análisis</>
+                          }
+                        </button>
+                      </div>
+
+                      {playerStats.length === 0 && !playerAnalysis && (
+                        <p className="text-xs text-gray-600 text-center py-4">
+                          No hay estadísticas cargadas para esta jugadora.<br />
+                          <span className="text-gray-700">Cargalas desde el Fixture → Stats.</span>
+                        </p>
+                      )}
+
+                      {playerStats.length > 0 && !playerAnalysis && !generatingStatsAnalysis && (
+                        <div className="bg-[#0a0a0a] border border-green-900/20 rounded-xl p-3 mb-3">
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Resumen de datos</p>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            {[
+                              { label: 'Partidos', value: playerStats.length },
+                              { label: 'Saques', value: playerStats.reduce((a, s) => a + (s.saques_total || 0), 0) },
+                              { label: 'Remates', value: playerStats.reduce((a, s) => a + (s.remates_total || 0), 0) },
+                            ].map(({ label, value }) => (
+                              <div key={label} className="bg-[#111] rounded-lg p-2">
+                                <p className="text-lg font-black text-white">{value}</p>
+                                <p className="text-[9px] text-gray-500 uppercase">{label}</p>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-gray-600 text-center mt-2">Presioná "Generar análisis" para que Flora analice estos datos.</p>
+                        </div>
+                      )}
+
+                      {statsAnalysisError && (
+                        <p className="text-xs text-red-400 bg-red-900/10 border border-red-900/30 rounded-lg p-3 text-center">{statsAnalysisError}</p>
+                      )}
+
+                      {playerAnalysis && (
+                        <div>
+                          <div className="text-sm text-gray-200 leading-relaxed whitespace-pre-line bg-[#0a0a0a] border border-green-900/20 rounded-xl p-4 max-h-80 overflow-y-auto">
+                            {playerAnalysis.content}
+                          </div>
+                          <p className="text-[10px] text-gray-600 mt-2 text-right">
+                            Basado en {playerAnalysis.match_count} partido{playerAnalysis.match_count !== 1 ? 's' : ''} · {playerAnalysis.generated_at ? new Date(playerAnalysis.generated_at).toLocaleDateString('es-AR') : ''}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Cuenta de acceso — admin only */}
                   {isAdmin && <div className="bg-[#111] border border-[#222] rounded-xl p-4">

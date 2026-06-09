@@ -75,3 +75,37 @@ export type AnalysisItem = {
   detail: string;
   tac_type?: string;
 };
+
+export type PlayerMatchStats = {
+  id?: string;
+  match_id: string;
+  player_id: string;
+  jersey_number: string;
+  player_name: string;
+  saques_total: number;
+  saques_punto: number;
+  saques_error: number;
+  recepciones_total: number;
+  recepciones_perfectas: number;
+  recepciones_error: number;
+  pases_acertados: number;
+  pases_errados: number;
+  remates_total: number;
+  remates_punto: number;
+  remates_error: number;
+  armados_arriba: number;
+  armados_abajo: number;
+  bloqueos_punto: number;
+  bloqueos_error: number;
+  season?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type PlayerAnalysis = {
+  id?: string;
+  player_id: string;
+  content: string;
+  match_count: number;
+  generated_at?: string;
+};

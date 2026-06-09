@@ -1,10 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { supabase, Match } from '../lib/supabase';
+import { supabase, Match, Player, PlayerMatchStats } from '../lib/supabase';
 import { getCache, setCache, clearCache } from '../lib/cache';
 import Layout from '../components/Layout';
 import Modal from '../components/Modal';
 import toast from 'react-hot-toast';
-import { Calendar, MapPin, Trophy, Plus, Video, X, Link2, Youtube, Loader } from 'lucide-react';
+import {
+  Calendar, MapPin, Trophy, Plus, Video, X, Link2, Youtube,
+  Loader, BarChart2, ChevronDown, ChevronUp, Save,
+} from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type VideoRow = { id: string; yt_id: string; title: string; date: string };
@@ -24,6 +27,36 @@ function extractYtId(url: string): string | null {
   return null;
 }
 
+const emptyStats = (player: Player): PlayerMatchStats => ({
+  match_id: '',
+  player_id: player.id!,
+  jersey_number: player.num,
+  player_name: player.name,
+  saques_total: 0, saques_punto: 0, saques_error: 0,
+  recepciones_total: 0, recepciones_perfectas: 0, recepciones_error: 0,
+  pases_acertados: 0, pases_errados: 0,
+  remates_total: 0, remates_punto: 0, remates_error: 0,
+  armados_arriba: 0, armados_abajo: 0,
+  bloqueos_punto: 0, bloqueos_error: 0,
+});
+
+const StatInput = ({
+  label, value, onChange,
+}: { label: string; value: number; onChange: (v: number) => void }) => (
+  <div className="flex items-center justify-between gap-2">
+    <span className="text-[11px] text-gray-400 flex-1">{label}</span>
+    <div className="flex items-center gap-1">
+      <button type="button"
+        onClick={() => onChange(Math.max(0, value - 1))}
+        className="w-6 h-6 rounded bg-[#333] hover:bg-[#444] text-gray-300 font-bold text-sm transition-colors flex items-center justify-center">−</button>
+      <span className="w-8 text-center text-sm font-bold text-white">{value}</span>
+      <button type="button"
+        onClick={() => onChange(value + 1)}
+        className="w-6 h-6 rounded bg-[#333] hover:bg-[#444] text-gray-300 font-bold text-sm transition-colors flex items-center justify-center">+</button>
+    </div>
+  </div>
+);
+
 const Fixture = () => {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +70,15 @@ const Fixture = () => {
   const [allVideos, setAllVideos] = useState<VideoRow[]>([]);
   const [loadingVideos, setLoadingVideos] = useState(false);
   const [addingVideo, setAddingVideo] = useState<string | null>(null);
+
+  // Stats state
+  const [statsMatch, setStatsMatch] = useState<Match | null>(null);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [existingStats, setExistingStats] = useState<Record<string, PlayerMatchStats>>({});
+  const [statsForm, setStatsForm] = useState<Record<string, PlayerMatchStats>>({});
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [savingStats, setSavingStats] = useState(false);
+  const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<Partial<Match>>({
     rival: '', cond: 'Local',
@@ -132,6 +174,88 @@ const Fixture = () => {
   }, []);
 
   const closeVideoModal = () => setVideoModalMatch(null);
+
+  const openStatsModal = useCallback(async (match: Match) => {
+    setStatsMatch(match);
+    setLoadingStats(true);
+    setExpandedPlayer(null);
+
+    const [playersRes, statsRes] = await Promise.all([
+      supabase.from('players').select('*').order('num', { ascending: true }),
+      supabase.from('player_match_stats').select('*').eq('match_id', match.id),
+    ]);
+
+    const loadedPlayers: Player[] = playersRes.data || [];
+    const loadedStats: PlayerMatchStats[] = statsRes.data || [];
+
+    setPlayers(loadedPlayers);
+
+    const byPlayer: Record<string, PlayerMatchStats> = {};
+    for (const s of loadedStats) byPlayer[s.player_id] = s;
+    setExistingStats(byPlayer);
+
+    // Initialize form with existing or empty
+    const form: Record<string, PlayerMatchStats> = {};
+    for (const p of loadedPlayers) {
+      form[p.id!] = byPlayer[p.id!]
+        ? { ...byPlayer[p.id!] }
+        : { ...emptyStats(p), match_id: match.id! };
+    }
+    setStatsForm(form);
+    setLoadingStats(false);
+
+    // Auto-expand first player
+    if (loadedPlayers.length > 0) setExpandedPlayer(loadedPlayers[0].id!);
+  }, []);
+
+  const closeStatsModal = () => { setStatsMatch(null); setStatsForm({}); setExistingStats({}); };
+
+  const updateStat = (playerId: string, field: keyof PlayerMatchStats, value: number) => {
+    setStatsForm(prev => ({
+      ...prev,
+      [playerId]: { ...prev[playerId], [field]: value },
+    }));
+  };
+
+  const saveStats = async () => {
+    if (!statsMatch) return;
+    setSavingStats(true);
+    try {
+      const rows = Object.values(statsForm).filter(s => {
+        // Only save rows that have at least one non-zero stat
+        return (
+          s.saques_total || s.saques_punto || s.saques_error ||
+          s.recepciones_total || s.recepciones_perfectas || s.recepciones_error ||
+          s.pases_acertados || s.pases_errados ||
+          s.remates_total || s.remates_punto || s.remates_error ||
+          s.armados_arriba || s.armados_abajo ||
+          s.bloqueos_punto || s.bloqueos_error ||
+          existingStats[s.player_id]
+        );
+      });
+
+      for (const row of rows) {
+        const existing = existingStats[row.player_id];
+        if (existing?.id) {
+          const { error } = await supabase
+            .from('player_match_stats')
+            .update({ ...row, updated_at: new Date().toISOString() })
+            .eq('id', existing.id);
+          if (error) { toast.error(`Error al guardar stats de ${row.player_name}`); }
+        } else {
+          const { error } = await supabase
+            .from('player_match_stats')
+            .insert([{ ...row, match_id: statsMatch.id }]);
+          if (error) { toast.error(`Error al guardar stats de ${row.player_name}`); }
+        }
+      }
+
+      toast.success('Estadísticas guardadas correctamente');
+      closeStatsModal();
+    } finally {
+      setSavingStats(false);
+    }
+  };
 
   const linkedVideoIds = videoModalMatch
     ? new Set((matchVideos[videoModalMatch.id!] || []).map((mv: MatchVideoRow) => mv.video_id))
@@ -238,6 +362,12 @@ const Fixture = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
+                  {isAdmin && (
+                    <button onClick={() => openStatsModal(match)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all bg-[#242424] text-gray-400 border border-[#333] hover:border-green-700 hover:text-green-400">
+                      <BarChart2 size={12} /> Stats
+                    </button>
+                  )}
                   <button onClick={() => openVideoModal(match)}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                       videos.length > 0
@@ -402,6 +532,118 @@ const Fixture = () => {
             {allVideos.length === 0 && (
               <p className="text-xs text-gray-600 italic text-center">No hay videos cargados en el sistema todavía.</p>
             )}
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal: Stats por jugadora */}
+      <Modal
+        isOpen={!!statsMatch}
+        onClose={closeStatsModal}
+        title={statsMatch ? `Estadísticas · vs ${statsMatch.rival} (${statsMatch.date})` : 'Stats'}
+      >
+        {loadingStats ? (
+          <div className="flex justify-center py-10">
+            <div className="w-6 h-6 border-2 border-green-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-[11px] text-gray-500">Ingresá las estadísticas por jugadora. Solo se guardan las que tienen al menos un dato cargado.</p>
+
+            <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
+              {players.map(player => {
+                const s = statsForm[player.id!];
+                if (!s) return null;
+                const isExpanded = expandedPlayer === player.id;
+                const hasData = existingStats[player.id!] !== undefined;
+
+                return (
+                  <div key={player.id} className={`rounded-xl border transition-all ${
+                    isExpanded ? 'border-green-700/50 bg-[#0f1a0f]' : hasData ? 'border-green-900/30 bg-[#111]' : 'border-[#222] bg-[#111]'
+                  }`}>
+                    {/* Player header */}
+                    <button
+                      type="button"
+                      onClick={() => setExpandedPlayer(isExpanded ? null : player.id!)}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="bg-green-700 text-white text-[10px] font-black px-1.5 py-0.5 rounded">#{player.num}</span>
+                        <span className="font-bold text-sm">{player.name}</span>
+                        <span className="text-[10px] text-gray-500 uppercase">{player.pos}</span>
+                        {hasData && <span className="text-[9px] font-black text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">DATOS</span>}
+                      </div>
+                      {isExpanded ? <ChevronUp size={14} className="text-gray-500" /> : <ChevronDown size={14} className="text-gray-500" />}
+                    </button>
+
+                    {/* Stats inputs */}
+                    {isExpanded && (
+                      <div className="px-4 pb-4 space-y-4 border-t border-[#1a2a1a] pt-3">
+                        {/* Saques */}
+                        <div>
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Saques</p>
+                          <div className="space-y-1.5">
+                            <StatInput label="Total" value={s.saques_total} onChange={v => updateStat(player.id!, 'saques_total', v)} />
+                            <StatInput label="Punto directo" value={s.saques_punto} onChange={v => updateStat(player.id!, 'saques_punto', v)} />
+                            <StatInput label="Error" value={s.saques_error} onChange={v => updateStat(player.id!, 'saques_error', v)} />
+                          </div>
+                        </div>
+                        {/* Recepciones */}
+                        <div>
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Recepciones</p>
+                          <div className="space-y-1.5">
+                            <StatInput label="Total" value={s.recepciones_total} onChange={v => updateStat(player.id!, 'recepciones_total', v)} />
+                            <StatInput label="Perfectas" value={s.recepciones_perfectas} onChange={v => updateStat(player.id!, 'recepciones_perfectas', v)} />
+                            <StatInput label="Error" value={s.recepciones_error} onChange={v => updateStat(player.id!, 'recepciones_error', v)} />
+                          </div>
+                        </div>
+                        {/* Pases */}
+                        <div>
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Pases</p>
+                          <div className="space-y-1.5">
+                            <StatInput label="Acertados" value={s.pases_acertados} onChange={v => updateStat(player.id!, 'pases_acertados', v)} />
+                            <StatInput label="Errados" value={s.pases_errados} onChange={v => updateStat(player.id!, 'pases_errados', v)} />
+                          </div>
+                        </div>
+                        {/* Remates */}
+                        <div>
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Remates</p>
+                          <div className="space-y-1.5">
+                            <StatInput label="Total" value={s.remates_total} onChange={v => updateStat(player.id!, 'remates_total', v)} />
+                            <StatInput label="Punto" value={s.remates_punto} onChange={v => updateStat(player.id!, 'remates_punto', v)} />
+                            <StatInput label="Error / Bloqueado" value={s.remates_error} onChange={v => updateStat(player.id!, 'remates_error', v)} />
+                          </div>
+                        </div>
+                        {/* Armados */}
+                        <div>
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Armados</p>
+                          <div className="space-y-1.5">
+                            <StatInput label="Arriba" value={s.armados_arriba} onChange={v => updateStat(player.id!, 'armados_arriba', v)} />
+                            <StatInput label="Abajo / Bump" value={s.armados_abajo} onChange={v => updateStat(player.id!, 'armados_abajo', v)} />
+                          </div>
+                        </div>
+                        {/* Bloqueos */}
+                        <div>
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Bloqueos</p>
+                          <div className="space-y-1.5">
+                            <StatInput label="Punto" value={s.bloqueos_punto} onChange={v => updateStat(player.id!, 'bloqueos_punto', v)} />
+                            <StatInput label="Error" value={s.bloqueos_error} onChange={v => updateStat(player.id!, 'bloqueos_error', v)} />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={saveStats}
+              disabled={savingStats}
+              className="w-full flex items-center justify-center gap-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 py-3 rounded-xl font-black text-sm transition-all mt-2"
+            >
+              {savingStats ? <><Loader size={14} className="animate-spin" /> Guardando...</> : <><Save size={14} /> Guardar estadísticas</>}
+            </button>
           </div>
         )}
       </Modal>
